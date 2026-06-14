@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ContentForge — 주제 한 줄로 카드뉴스</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:'Pretendard',sans-serif;}
+  body{background:#0b1020;color:#e7ecf5;min-height:100vh;}
+  .hero{padding:72px 24px 40px;text-align:center;
+    background:radial-gradient(1200px 400px at 50% -10%,#1e3a8a55,transparent);}
+  .hero h1{font-size:46px;font-weight:800;letter-spacing:-1.5px;}
+  .hero h1 span{background:linear-gradient(90deg,#38bdf8,#7c3aed);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+  .hero p{margin-top:14px;color:#94a3b8;font-size:18px;}
+  .wrap{max-width:760px;margin:0 auto;padding:0 24px 80px;}
+  .panel{background:#121a2e;border:1px solid #1e293b;border-radius:20px;
+    padding:28px;margin-top:8px;box-shadow:0 20px 60px #0006;}
+  .row{display:flex;gap:12px;margin-top:14px;flex-wrap:wrap;}
+  label{display:block;font-size:13px;color:#94a3b8;margin-bottom:6px;font-weight:600;}
+  input,select{width:100%;background:#0b1020;border:1px solid #283549;color:#e7ecf5;
+    border-radius:12px;padding:14px 16px;font-size:16px;outline:none;}
+  input:focus{border-color:#38bdf8;}
+  .f-topic{flex:1 1 100%;}
+  .f-small{flex:1;min-width:120px;}
+  button{cursor:pointer;border:none;}
+  .gen{margin-top:18px;width:100%;padding:16px;border-radius:14px;font-size:18px;
+    font-weight:800;color:#fff;background:linear-gradient(90deg,#4f46e5,#7c3aed);
+    transition:transform .12s,box-shadow .12s,opacity .2s;}
+  .gen:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 34px #7c3aed55;}
+  .gen:active:not(:disabled){transform:translateY(0);}
+  .gen:disabled{opacity:.5;cursor:default;}
+  .prog{margin-top:18px;display:none;}
+  .prog.on{display:block;}
+  .bar{height:10px;background:#0b1020;border-radius:6px;overflow:hidden;margin-top:8px;}
+  .bar > i{display:block;height:100%;width:0;border-radius:6px;
+    background:linear-gradient(90deg,#38bdf8,#7c3aed);transition:width .3s;}
+  .msg{font-size:14px;color:#cbd5e1;}
+  .preview{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:9px;margin-top:14px;}
+  .pvcard{width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:9px;
+    box-shadow:0 6px 20px #0007;animation:pop .45s cubic-bezier(.2,.9,.3,1.2) both;}
+  @keyframes pop{from{opacity:0;transform:scale(.88) translateY(10px);}to{opacity:1;transform:none;}}
+  .goReader{display:none;margin-top:16px;text-align:center;justify-content:center;}
+  .goReader.on{display:flex;animation:pop .4s both;}
+  .tonepick{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
+  .tnpick{padding:10px 14px;border-radius:11px;border:1px solid #283549;background:#0b1020;
+    color:#e7ecf5;cursor:pointer;font-size:13.5px;font-weight:700;transition:.15s;flex:1;min-width:120px;}
+  .tnpick:hover{border-color:#475569;}
+  .tnpick.on{border-color:#7c3aed;background:#7c3aed22;}
+  .tnpick span{display:block;font-size:10.5px;color:#64748b;font-weight:500;margin-top:2px;}
+  .themepick{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:8px;}
+  .tpick{text-align:left;padding:13px 15px;border-radius:12px;border:1px solid #283549;
+    background:#0b1020;color:#e7ecf5;cursor:pointer;display:flex;flex-direction:column;gap:3px;
+    transition:.15s;}
+  .tpick:hover{border-color:#475569;}
+  .tpick.on{border-color:#7c3aed;background:#7c3aed22;}
+  .tpick b{font-size:15px;font-weight:700;}
+  .tpick span{font-size:11.5px;color:#64748b;}
+  .toggle{display:flex;gap:10px;align-items:flex-start;margin-top:16px;cursor:pointer;
+    font-size:13px;color:#94a3b8;line-height:1.45;}
+  .toggle input{width:18px;height:18px;margin-top:1px;accent-color:#7c3aed;flex-shrink:0;}
+  .toggle b{color:#cbd5e1;font-weight:700;}
+  .examples{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;}
+  .chip{font-size:13px;color:#cbd5e1;background:#0b1020;border:1px solid #283549;
+    padding:8px 12px;border-radius:999px;cursor:pointer;}
+  .chip:hover{border-color:#38bdf8;}
+  /* 페르소나 공장 */
+  .pz{margin-top:22px;}
+  .pz-head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px;flex-wrap:wrap;}
+  .pz-head h3{font-size:19px;font-weight:800;}
+  .pz-sub{font-size:13px;color:#64748b;}
+  .pz-row{display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap;}
+  .pz select,.pz input{background:#0b1020;border:1px solid #283549;color:#e7ecf5;
+    border-radius:11px;padding:12px 14px;font-size:15px;outline:none;}
+  .pz select:focus,.pz input:focus{border-color:#7c3aed;}
+  #personaSel{flex:1;min-width:160px;}
+  .btn-sm{padding:11px 14px;border-radius:11px;font-size:14px;font-weight:700;cursor:pointer;
+    border:1px solid #283549;background:#0b1020;color:#e7ecf5;}
+  .btn-sm:hover{border-color:#7c3aed;}
+  .pform{display:none;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;
+    padding:16px;background:#0b1020;border:1px solid #283549;border-radius:14px;}
+  .pform.on{display:grid;}
+  .pform input:nth-child(1),.pform input:nth-child(2){grid-column:1/-1;}
+  .pform .pri{grid-column:1/-1;}
+  #pBody{display:none;margin-top:16px;}
+  #pBody.on{display:block;}
+  .pinfo{font-size:13px;color:#94a3b8;line-height:1.6;background:#0b1020;
+    border:1px solid #1e293b;border-radius:12px;padding:13px 15px;}
+  .mini{font-size:13px;color:#94a3b8;display:flex;align-items:center;gap:6px;cursor:pointer;}
+  .mini input{width:16px;height:16px;accent-color:#7c3aed;}
+  .topiclist{margin-top:14px;display:flex;flex-direction:column;gap:8px;max-height:340px;
+    overflow-y:auto;}
+  .titem{display:flex;gap:10px;align-items:flex-start;padding:11px 14px;background:#0b1020;
+    border:1px solid #283549;border-radius:11px;font-size:14px;cursor:pointer;color:#e7ecf5;}
+  .titem input{width:17px;height:17px;margin-top:1px;accent-color:#7c3aed;flex-shrink:0;}
+  .titem:hover{border-color:#475569;}
+  #batchGo{display:none;margin-top:14px;}
+  #batchGo.on{display:block;}
+  .bprog{margin-top:14px;}
+  .bbar{height:10px;background:#0b1020;border-radius:6px;overflow:hidden;}
+  .bbar>i{display:block;height:100%;background:linear-gradient(90deg,#38bdf8,#7c3aed);
+    border-radius:6px;transition:width .4s;}
+  .bnow{font-size:13px;color:#cbd5e1;margin:8px 0;}
+  .bitem{font-size:13px;padding:7px 12px;border-radius:9px;margin-top:5px;background:#0b1020;
+    border:1px solid #1e293b;color:#94a3b8;}
+  .bitem.done{color:#86efac;border-color:#16633a;}
+  .bitem.running{color:#fde047;border-color:#854d0e;}
+  .bitem.error{color:#fca5a5;border-color:#7f1d1d;}
+  .gallery{margin-top:48px;}
+  .gallery h2{font-size:20px;font-weight:800;margin-bottom:16px;}
+  .store{font-size:13px;font-weight:600;color:#64748b;margin-left:8px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;}
+  .proj{background:#121a2e;border:1px solid #1e293b;border-radius:14px;overflow:hidden;
+    cursor:pointer;transition:transform .15s,border-color .15s;}
+  .proj:hover{transform:translateY(-3px);border-color:#38bdf8;}
+  .proj img{width:100%;aspect-ratio:4/5;object-fit:cover;display:block;background:#0b1020;}
+  .proj .meta{padding:10px 12px;}
+  .proj .t{font-size:13px;font-weight:700;line-height:1.3;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .proj .c{font-size:11px;color:#64748b;margin-top:4px;}
+  .empty{color:#64748b;font-size:14px;}
+  @media(max-width:600px){
+    .hero{padding:48px 20px 26px;}
+    .hero h1{font-size:34px;}
+    .hero p{font-size:14px;}
+    .panel{padding:20px;border-radius:16px;}
+    .row{flex-direction:column;}
+    .f-small{width:100%;}
+    .pform{grid-template-columns:1fr;}
+    .themepick{grid-template-columns:1fr;}
+    .tnpick{min-width:0;flex:1 1 44%;}
+    .grid{grid-template-columns:repeat(auto-fill,minmax(118px,1fr));}
+  }
+</style>
+</head>
+<body>
+  <div class="hero">
+    <h1><span>ContentForge</span></h1>
+    <p>주제 한 줄이면, AI가 카드뉴스를 통째로 만든다. 촬영 0 · 비용 0</p>
+  </div>
+  <div class="wrap">
+    <div class="panel">
+      <div class="row">
+        <div class="f-topic">
+          <label>주제</label>
+          <input id="topic" placeholder="예: 직장인 점심시간 10분 스트레칭" autofocus>
+        </div>
+      </div>
+      <div class="row">
+        <div class="f-small">
+          <label>장수</label>
+          <select id="n">
+            <option>6</option><option selected>8</option><option>10</option>
+          </select>
+        </div>
+        <div class="f-small" style="flex:2;">
+          <label>브랜드/핸들</label>
+          <input id="brand" value="@contentforge">
+        </div>
+      </div>
+      <label style="margin-top:16px;">말투 (톤)</label>
+      <div class="tonepick" id="tonepick"></div>
+      <label style="margin-top:16px;">디자인 테마</label>
+      <div class="themepick" id="themepick"></div>
+      <div class="examples">
+        <span class="chip">90%가 모르는 카드뉴스 만드는 법</span>
+        <span class="chip">월 100만원 부수입 만드는 5가지</span>
+        <span class="chip">초보 주식 첫 계좌 만들기</span>
+      </div>
+      <label class="toggle" for="research">
+        <input type="checkbox" id="research" checked>
+        <span><b>📈 트렌드 분석해서 기획</b> — 같은 주제로 잘나간 콘텐츠를 분석해 벤치마킹 (영상 안 받고 제목·조회수만)</span>
+      </label>
+      <button class="gen" id="gen">카드뉴스 만들기</button>
+      <div class="prog" id="prog">
+        <div class="msg" id="msg">시작...</div>
+        <div class="bar"><i id="ifill"></i></div>
+        <div class="preview" id="preview"></div>
+        <a class="btn pri goReader" id="goReader">→ 편집·저장하러 가기</a>
+      </div>
+    </div>
+
+    <div class="panel pz">
+      <div class="pz-head">
+        <h3>🏭 페르소나로 한 번에</h3>
+        <span class="pz-sub">계정 컨셉을 정하면 주제 추천 → 일괄 제작까지 자동</span>
+      </div>
+      <div class="pz-row">
+        <select id="personaSel"><option value="">페르소나 선택…</option></select>
+        <button class="btn-sm" id="pNew">+ 새 페르소나</button>
+        <button class="btn-sm" id="pDel">삭제</button>
+      </div>
+      <div id="pForm" class="pform">
+        <input id="pfName" placeholder="채널 이름 (예: 머니스타트)">
+        <input id="pfNiche" placeholder="니치/주제영역 (예: 사회초년생 재테크 입문)">
+        <input id="pfTarget" placeholder="타겟 (예: 첫 직장 2030)">
+        <input id="pfTone" placeholder="말투/톤 (예: 친근하고 쉽게, 잔소리 없이)">
+        <input id="pfBrand" placeholder="@브랜드핸들">
+        <select id="pfTheme"></select>
+        <select id="pfTonePreset"></select>
+        <button class="btn pri" id="pfSave">페르소나 저장</button>
+      </div>
+      <div id="pBody">
+        <div class="pinfo" id="pInfo"></div>
+        <div class="pz-row">
+          <button class="btn" id="suggest">✨ 주제 자동 추천</button>
+          <select id="pN"><option>5</option><option selected>10</option><option>15</option></select>
+          <label class="mini"><input type="checkbox" id="pTrend"> 트렌드 반영</label>
+        </div>
+        <div id="topicList" class="topiclist"></div>
+        <button class="gen" id="batchGo">선택한 주제로 일괄 생성</button>
+        <div id="batchProg" class="bprog"></div>
+      </div>
+    </div>
+
+    <div class="gallery">
+      <h2>내 작업 <span id="storage" class="store"></span></h2>
+      <div class="grid" id="grid"><div class="empty">아직 만든 카드뉴스가 없어요.</div></div>
+    </div>
+  </div>
+
+<script>
+const $ = s => document.querySelector(s);
+const gen = $('#gen'), prog = $('#prog'), msg = $('#msg'), ifill = $('#ifill');
+let theme = 'editorial';
+let tonePreset = 'hook';
+
+async function loadTones(){
+  try{
+    const {tones:ts, default:def} = await (await fetch('/api/tones')).json();
+    tonePreset = def;
+    $('#tonepick').innerHTML = ts.map(t =>
+      `<button class="tnpick ${t.key===def?'on':''}" data-k="${t.key}">${t.label}<span>${t.desc}</span></button>`).join('');
+    document.querySelectorAll('.tnpick').forEach(b => b.onclick = () => {
+      tonePreset = b.dataset.k;
+      document.querySelectorAll('.tnpick').forEach(x => x.classList.toggle('on', x===b));
+    });
+    const ps = $('#pfTonePreset');
+    if(ps) ps.innerHTML = ts.map(t=>`<option value="${t.key}">${t.label} — ${t.desc}</option>`).join('');
+  }catch(e){}
+}
+
+async function loadThemes(){
+  try{
+    const {themes:ths, default:def} = await (await fetch('/api/themes')).json();
+    theme = def;
+    $('#themepick').innerHTML = ths.map(t =>
+      `<button class="tpick ${t.key===def?'on':''}" data-k="${t.key}">
+        <b>${t.label}</b><span>${t.desc}</span></button>`).join('');
+    document.querySelectorAll('.tpick').forEach(b => b.onclick = () => {
+      theme = b.dataset.k;
+      document.querySelectorAll('.tpick').forEach(x => x.classList.toggle('on', x===b));
+    });
+    const tsel = $('#pfTheme');
+    if(tsel) tsel.innerHTML = ths.map(t=>`<option value="${t.key}">${t.label} — ${t.desc}</option>`).join('');
+  }catch(e){}
+}
+
+document.querySelectorAll('.chip').forEach(c =>
+  c.onclick = () => { $('#topic').value = c.textContent; $('#topic').focus(); });
+
+async function loadStorage(){
+  try{ const s = await (await fetch('/api/storage')).json();
+    $('#storage').textContent = `· 저장공간 ${s.used_mb}MB / ${s.cap_mb}MB (${s.projects}개)`;
+  }catch(e){}
+}
+
+async function loadProjects(){
+  const r = await fetch('/api/projects'); const {projects} = await r.json();
+  const grid = $('#grid');
+  if(!projects.length){ grid.innerHTML = '<div class="empty">아직 만든 카드뉴스가 없어요.</div>'; return; }
+  grid.innerHTML = projects.map(p => `
+    <div class="proj" onclick="location.href='/reader.html?slug=${encodeURIComponent(p.slug)}'">
+      <img src="${p.cover||''}" loading="lazy">
+      <div class="meta"><div class="t">${p.topic}</div><div class="c">${p.count}장</div></div>
+    </div>`).join('');
+}
+
+async function generate(){
+  const topic = $('#topic').value.trim();
+  if(!topic){ $('#topic').focus(); return; }
+  gen.disabled = true; prog.classList.add('on');
+  $('#preview').innerHTML = ''; $('#goReader').classList.remove('on');
+  msg.textContent = '카피 생성 중...'; ifill.style.width = '8%';
+  try{
+    const r = await fetch('/api/generate', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({topic, n:+$('#n').value, brand:$('#brand').value,
+        use_research: $('#research').checked, theme, tone_preset: tonePreset})});
+    const j = await r.json();
+    if(j.error){ msg.textContent = '⚠️ ' + j.error; gen.disabled = false; return; }
+    poll(j.job_id);
+  }catch(e){ msg.textContent = '⚠️ ' + e; gen.disabled = false; }
+}
+
+function paintCards(cards){
+  (cards||[]).forEach((url, idx) => {
+    if(!document.getElementById('pv'+idx)){
+      const im = document.createElement('img');
+      im.id = 'pv'+idx; im.src = url; im.className = 'pvcard';
+      $('#preview').appendChild(im);
+    }
+  });
+}
+
+async function poll(id){
+  const r = await fetch('/api/job?id=' + id); const j = await r.json();
+  msg.textContent = `${j.stage||''} · ${j.message||''}`;
+  ifill.style.width = Math.max(8, (j.progress||0)*100) + '%';
+  paintCards(j.cards);
+  if(j.status === 'done'){
+    ifill.style.width = '100%';
+    msg.textContent = `✅ ${j.count}장 완성! 카드를 눌러 편집하거나 저장하세요`;
+    const gr = $('#goReader');
+    gr.href = '/reader.html?slug=' + encodeURIComponent(j.slug);
+    gr.classList.add('on');
+    gen.disabled = false; loadProjects(); loadStorage();
+    return;
+  }
+  if(j.status === 'error'){ msg.textContent = '⚠️ ' + j.message; gen.disabled = false; return; }
+  setTimeout(() => poll(id), 600);
+}
+
+gen.onclick = generate;
+$('#topic').addEventListener('keydown', e => { if(e.key==='Enter') generate(); });
+// ===== 페르소나 공장 =====
+let personas = [], curPersona = null;
+async function loadPersonas(){
+  const {personas:ps} = await (await fetch('/api/personas')).json();
+  personas = ps;
+  $('#personaSel').innerHTML = '<option value="">페르소나 선택…</option>' +
+    ps.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+}
+function selectPersona(id){
+  curPersona = personas.find(p=>p.id===id) || null;
+  $('#pForm').classList.remove('on');
+  if(!curPersona){ $('#pBody').classList.remove('on'); return; }
+  $('#pBody').classList.add('on');
+  const p = curPersona;
+  $('#pInfo').innerHTML = `<b>${p.niche}</b><br>🎯 ${p.target} · 🗣️ ${p.tone}<br>🎨 ${p.theme} · ${p.brand}`;
+  $('#topicList').innerHTML=''; $('#batchGo').classList.remove('on'); $('#batchProg').innerHTML='';
+}
+$('#personaSel').onchange = e => selectPersona(e.target.value);
+$('#pNew').onclick = () => $('#pForm').classList.toggle('on');
+$('#pfSave').onclick = async () => {
+  const body = {name:$('#pfName').value, niche:$('#pfNiche').value, target:$('#pfTarget').value,
+    tone:$('#pfTone').value, brand:$('#pfBrand').value, theme:$('#pfTheme').value,
+    tone_preset:$('#pfTonePreset').value};
+  if(!body.name && !body.niche){ alert('이름과 니치는 필요해요'); return; }
+  const j = await (await fetch('/api/persona_create',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
+  if(j.error){ alert(j.error); return; }
+  ['pfName','pfNiche','pfTarget','pfTone','pfBrand'].forEach(id=>$('#'+id).value='');
+  await loadPersonas();
+  $('#personaSel').value = j.persona.id; selectPersona(j.persona.id);
+};
+$('#pDel').onclick = async () => {
+  if(!curPersona) return;
+  await fetch('/api/persona_delete',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({id:curPersona.id})});
+  await loadPersonas(); $('#personaSel').value=''; selectPersona('');
+};
+$('#suggest').onclick = async () => {
+  if(!curPersona) return;
+  const btn=$('#suggest'); btn.disabled=true; btn.textContent='추천 중…';
+  const trend = $('#pTrend').checked ? '&trend=1' : '';
+  try{
+    const j = await (await fetch(`/api/suggest_topics?pid=${curPersona.id}&n=${$('#pN').value}${trend}`)).json();
+    if(j.error){ alert(j.error); return; }
+    $('#topicList').innerHTML = j.topics.map(t=>
+      `<label class="titem"><input type="checkbox" checked data-t="${encodeURIComponent(t)}"> ${t}</label>`).join('');
+    $('#batchGo').classList.add('on');
+  }finally{ btn.disabled=false; btn.textContent='✨ 주제 자동 추천'; }
+};
+$('#batchGo').onclick = async () => {
+  const topics = [...document.querySelectorAll('#topicList input:checked')]
+    .map(c=>decodeURIComponent(c.dataset.t));
+  if(!topics.length){ alert('주제를 하나 이상 선택하세요'); return; }
+  $('#batchGo').disabled=true;
+  const j = await (await fetch('/api/batch_generate',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({pid:curPersona.id, topics, n:8, use_research:$('#pTrend').checked})})).json();
+  if(j.error){ alert(j.error); $('#batchGo').disabled=false; return; }
+  pollBatch(j.batch_id);
+};
+async function pollBatch(id){
+  const b = await (await fetch('/api/batch?id='+id)).json();
+  const pct = b.total ? Math.round(b.done/b.total*100) : 0;
+  $('#batchProg').innerHTML =
+    `<div class="bbar"><i style="width:${pct}%"></i></div>`+
+    `<div class="bnow">${b.done}/${b.total} 완성 ${b.current?'· 제작 중: '+b.current:''}</div>`+
+    (b.items||[]).map(it=>`<div class="bitem ${it.status}">`+
+      `${it.status==='done'?'✅':it.status==='running'?'⏳':it.status==='error'?'⚠️':'·'} ${it.topic}</div>`).join('');
+  if(b.status==='done'){ $('#batchGo').disabled=false; loadProjects(); loadStorage(); return; }
+  setTimeout(()=>pollBatch(id), 1500);
+}
+
+loadProjects();
+loadStorage();
+loadTones();
+loadThemes();
+loadPersonas();
+</script>
+</body>
+</html>

@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ContentForge — 편집기</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:'Pretendard',sans-serif;}
+  body{background:#0b1020;color:#e7ecf5;min-height:100vh;display:flex;flex-direction:column;}
+  .top{display:flex;align-items:center;gap:14px;padding:16px 22px;border-bottom:1px solid #1e293b;}
+  .top a{color:#94a3b8;text-decoration:none;font-weight:700;font-size:15px;}
+  .top a:hover{color:#38bdf8;}
+  .top .title{font-weight:800;font-size:17px;flex:1;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .main{flex:1;display:flex;gap:24px;padding:24px;align-items:flex-start;
+    justify-content:center;flex-wrap:wrap;}
+  /* 왼쪽: 카드 캐러셀 */
+  .stage{display:flex;align-items:center;gap:18px;}
+  .nav{width:48px;height:48px;border-radius:50%;border:1px solid #283549;background:#121a2e;
+    color:#e7ecf5;font-size:22px;cursor:pointer;flex-shrink:0;display:flex;
+    align-items:center;justify-content:center;transition:.15s;}
+  .nav:hover{border-color:#38bdf8;background:#1a2438;}
+  .frame{position:relative;}
+  .frame img{height:min(66vh,760px);aspect-ratio:4/5;object-fit:contain;
+    border-radius:18px;box-shadow:0 24px 70px #000a;background:#121a2e;display:block;}
+  .frame.busy::after{content:'';position:absolute;inset:0;border-radius:18px;
+    background:#0b1020cc url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="%2338bdf8" stroke-width="3" stroke-dasharray="42" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite"/></circle></svg>') center/48px no-repeat;}
+  .count{position:absolute;top:14px;left:50%;transform:translateX(-50%);
+    background:#000000aa;padding:5px 13px;border-radius:999px;font-size:13px;font-weight:700;}
+  /* 오른쪽: 편집 패널 */
+  .editor{width:380px;max-width:92vw;background:#121a2e;border:1px solid #1e293b;
+    border-radius:18px;padding:22px;}
+  .editor .role{display:inline-block;font-size:12px;font-weight:800;letter-spacing:2px;
+    color:#38bdf8;background:#38bdf81a;padding:5px 11px;border-radius:999px;margin-bottom:16px;}
+  .editor label{display:block;font-size:13px;color:#94a3b8;margin:14px 0 6px;font-weight:600;}
+  .editor input,.editor textarea{width:100%;background:#0b1020;border:1px solid #283549;
+    color:#e7ecf5;border-radius:12px;padding:13px 14px;font-size:15px;outline:none;resize:vertical;}
+  .editor input:focus,.editor textarea:focus{border-color:#38bdf8;}
+  .editor textarea{min-height:78px;line-height:1.5;}
+  .acts{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;}
+  .btn{padding:12px 16px;border-radius:11px;font-size:14px;font-weight:700;cursor:pointer;
+    border:1px solid #283549;background:#0b1020;color:#e7ecf5;text-decoration:none;
+    display:inline-flex;align-items:center;gap:6px;}
+  .btn:hover{border-color:#38bdf8;}
+  .btn:disabled{opacity:.45;cursor:default;}
+  .btn.pri{background:linear-gradient(90deg,#4f46e5,#7c3aed);border:none;color:#fff;flex:1;
+    justify-content:center;}
+  .status{margin-top:14px;font-size:13px;color:#94a3b8;min-height:18px;}
+  .dots{display:flex;gap:8px;justify-content:center;padding:6px 0 16px;flex-wrap:wrap;}
+  .dot{width:9px;height:9px;border-radius:50%;background:#283549;cursor:pointer;transition:.15s;}
+  .dot.on{background:#38bdf8;width:24px;border-radius:5px;}
+  .bottom{padding:16px 22px 36px;border-top:1px solid #1e293b;
+    display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
+  .nav{transition:transform .12s,border-color .15s,background .15s;}
+  .nav:active{transform:scale(.92);}
+  .btn{transition:transform .12s,border-color .15s;}
+  .btn:active{transform:scale(.97);}
+  @media(max-width:760px){
+    .main{padding:16px;gap:16px;}
+    .frame img{height:auto;max-height:56vh;width:auto;max-width:86vw;}
+    .editor{width:100%;}
+    .stage{gap:8px;}
+    .nav{width:42px;height:42px;font-size:20px;}
+  }
+</style>
+</head>
+<body>
+  <div class="top">
+    <a href="/">← 처음으로</a>
+    <div class="title" id="title">로딩...</div>
+  </div>
+
+  <div class="main">
+    <div>
+      <div class="stage">
+        <button class="nav" id="prev">‹</button>
+        <div class="frame" id="frame">
+          <img id="card" alt="card">
+          <div class="count" id="count">1 / 1</div>
+        </div>
+        <button class="nav" id="next">›</button>
+      </div>
+      <div class="dots" id="dots"></div>
+    </div>
+
+    <div class="editor">
+      <span class="role" id="role">CARD</span>
+      <label>제목 (headline)</label>
+      <input id="eHead" placeholder="제목">
+      <label>본문 (body)</label>
+      <textarea id="eBody" placeholder="설명 한 줄"></textarea>
+      <div class="acts">
+        <button class="btn pri" id="bSave">💾 적용</button>
+        <button class="btn" id="bRegen" title="AI가 이 장 카피를 새로">🔄 카피 다시</button>
+        <button class="btn" id="bImg" title="배경 사진 교체">🖼️ 사진</button>
+      </div>
+      <div class="status" id="status"></div>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <a class="btn" id="dlone" download>이 장 저장</a>
+    <button class="btn pri" id="dlall" style="flex:0;">전체 저장</button>
+    <a class="btn" href="/">+ 새 카드뉴스</a>
+  </div>
+
+<script>
+const $ = s => document.querySelector(s);
+const slug = new URLSearchParams(location.search).get('slug');
+let cards = [], slides = [], i = 0;
+const rerolls = {};
+
+function curUrl(){ return cards[i]; }
+
+function show(){
+  if(!cards.length) return;
+  i = (i + cards.length) % cards.length;
+  $('#card').src = curUrl();
+  $('#count').textContent = `${i+1} / ${cards.length}`;
+  const s = slides[i] || {};
+  $('#role').textContent = (s.role || 'card').toUpperCase();
+  $('#eHead').value = s.headline || '';
+  $('#eBody').value = s.body || '';
+  $('#dlone').href = curUrl();
+  $('#dlone').setAttribute('download', `card_${String(i+1).padStart(2,'0')}.png`);
+  $('#status').textContent = '';
+  document.querySelectorAll('.dot').forEach((d,k)=>d.classList.toggle('on',k===i));
+}
+
+async function load(){
+  if(!slug){ $('#title').textContent = '프로젝트 없음'; return; }
+  const j = await (await fetch('/api/project?slug=' + encodeURIComponent(slug))).json();
+  if(j.error){ $('#title').textContent = '불러올 수 없음'; return; }
+  cards = j.cards || []; slides = j.slides || [];
+  if(j.uses_photo === false) $('#bImg').style.display = 'none';  // 무사진 테마
+  $('#title').textContent = j.topic || slug;
+  $('#dlall').textContent = `전체 저장 (${cards.length}장)`;
+  $('#dots').innerHTML = cards.map((_,k)=>`<div class="dot" data-k="${k}"></div>`).join('');
+  document.querySelectorAll('.dot').forEach(d=>d.onclick=()=>{i=+d.dataset.k;show();});
+  show();
+}
+
+function busy(on){
+  $('#frame').classList.toggle('busy', on);
+  ['bSave','bRegen','bImg','prev','next'].forEach(id=>$('#'+id).disabled = on);
+}
+
+// 편집 액션 공통: API 호출 → 카드 갱신
+async function act(path, body, msg){
+  busy(true); $('#status').textContent = msg;
+  try{
+    const j = await (await fetch(path, {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({slug, index: i+1, ...body})})).json();
+    if(j.error){ $('#status').textContent = '⚠️ ' + j.error; return; }
+    slides[i] = j.slide;
+    cards[i] = j.url;                 // ?t= 캐시버스터 포함
+    $('#card').src = j.url;
+    $('#eHead').value = j.slide.headline || '';
+    $('#eBody').value = j.slide.body || '';
+    $('#dlone').href = j.url;
+    $('#status').textContent = '✅ 됐어요';
+  }catch(e){ $('#status').textContent = '⚠️ ' + e; }
+  finally{ busy(false); }
+}
+
+$('#bSave').onclick  = ()=> act('/api/update_card',
+  {headline: $('#eHead').value, body: $('#eBody').value}, '적용 중...');
+$('#bRegen').onclick = ()=> act('/api/regen_card', {}, 'AI가 카피 새로 쓰는 중...');
+$('#bImg').onclick   = ()=>{ rerolls[i]=(rerolls[i]||0)+1;
+  act('/api/reroll_image', {variant: rerolls[i]}, '사진 바꾸는 중...'); };
+
+$('#prev').onclick = ()=>{ i--; show(); };
+$('#next').onclick = ()=>{ i++; show(); };
+document.addEventListener('keydown', e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') return;
+  if(e.key==='ArrowLeft'){ i--; show(); }
+  if(e.key==='ArrowRight'){ i++; show(); }
+});
+$('#dlall').onclick = ()=>{
+  cards.forEach((url,k)=>setTimeout(()=>{
+    const a=document.createElement('a');
+    a.href=url; a.download=`card_${String(k+1).padStart(2,'0')}.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+  }, k*350));
+};
+load();
+</script>
+</body>
+</html>

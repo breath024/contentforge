@@ -1,0 +1,7 @@
+# 생성물·캐시 (코드만 버전관리)
+out/
+__pycache__/
+*.pyc
+_*.png
+_*.html
+_req.json
