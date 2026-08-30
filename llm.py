@@ -1,6 +1,6 @@
 """LLM 백엔드 래퍼 — Ollama(로컬, 무료) 우선, 실패 시 명확히 에러.
 
-자체의 llm_judge 패턴을 그대로 차용. 카드뉴스/숏폼 카피 생성용.
+LLM 판정 패턴. 카드뉴스/숏폼 카피 생성용.
 """
 from __future__ import annotations
 import json

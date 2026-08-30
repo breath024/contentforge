@@ -1,8 +1,7 @@
 # ContentForge — 세션 핸드오프
 
 > 주제 한 줄 → AI 카드뉴스(이미지+카피) 자동 생성 + 인스타식 리더기.
-> "오파독"(월매출 2억 주장 숏폼 자동화 에이전시) 클론 — **그놈은 기술 60점 + 포장 100점,
-> 우리는 자체 엔진(90점) 보유 → 카드뉴스+숏폼을 한 입구에서 뽑는 게 진짜 격차.**
+> 숏폼 자동화 에이전시들이 파는 결과물을 직접 만들어보려고 시작했다.
 
 ## ⚡ 즉시 실행
 ```powershell
@@ -17,7 +16,7 @@ $env:PYTHONUTF8=1; python app.py    # → http://127.0.0.1:8770
 | 파일 | 역할 |
 |---|---|
 | `run.py` | CLI 엔트리. 주제 → 기획 → 렌더 한 방 |
-| `app.py` | 로컬 서버(ThreadingHTTPServer). `/api/generate`(백그라운드 워커)·`/api/job`·`/api/projects`·`/api/project`·`/out/*` 정적. 자체 review_server 패턴 |
+| `app.py` | 로컬 서버(ThreadingHTTPServer). `/api/generate`(백그라운드 워커)·`/api/job`·`/api/projects`·`/api/project`·`/out/*` 정적 |
 | `generate.py` | 주제 → 슬라이드 JSON. **후킹 프롬프트**(숫자/손해회피/반전 강제) + 슬라이드별 `image_query`(영문 검색어) |
 | `images.py` | 배경사진 조달. `PEXELS_API_KEY` 있으면 실사검색 / 없으면 picsum 폴백. out/<slug>/img/ 다운로드 |
 | `render.py` | 슬라이드 → 1080×1350 카드 HTML → Chrome 헤드리스 PNG. cover/cta=풀배경+오버레이, point=상단 이미지밴드+밝은 패널 |
@@ -55,7 +54,7 @@ $env:PYTHONUTF8=1; python app.py    # → http://127.0.0.1:8770
 
 ## 다음 후보
 1. **PEXELS_API_KEY 연결** — 주제 맞는 실사로 즉시 퀄 점프(무료, 1분).
-2. **자체 숏폼 엔진 결합** — 앱에 "숏폼" 탭. `Desktop/창업/비공개/프로젝트/자체`의 영상→숏폼 파이프라인을 같은 입구로. 오파독이 못 하는 진짜 차별점.
+2. **영상 파이프라인 결합** — 앱에 "숏폼" 탭을 같은 입구로. 오파독이 못 하는 진짜 차별점.
 3. **AI 이미지 생성** — picsum/스톡 대신 호윤 GPU(RTX 5070Ti)로 주제 맞춤 생성(SD/ComfyUI). 무거움, 2단계.
 4. 카피 품질 A/B — qwen2.5:32b 옵션, 톤 프리셋(정보형/후킹형/스토리형).
 5. 카드 템플릿 다양화(현재 1테마) + 폰트/색 브랜드 프리셋.

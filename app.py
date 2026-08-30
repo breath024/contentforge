@@ -10,7 +10,7 @@
   GET  /api/projects     생성된 카드뉴스 목록(최근순)
   GET  /api/project?slug= 슬라이드 + 카드 PNG 경로
   GET  /out/...          생성물 정적 서빙
-자체의 review_server 패턴(ThreadingHTTPServer + 백그라운드 워커) 차용.
+ThreadingHTTPServer + 백그라운드 워커 패턴.
 """
 from __future__ import annotations
 import json
