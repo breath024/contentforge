@@ -9,6 +9,7 @@ import json
 from llm import generate_json, pick_model
 import tones
 import quality
+import verify
 
 PROMPT_TMPL = """당신은 인스타에서 수십만 저장을 받는 카드뉴스 카피라이터다.
 주제: "{topic}"
@@ -65,6 +66,8 @@ def make_cards(
     tone_preset: str | None = None,
     avoid: list[str] | None = None,
     self_fix: bool = True,
+    verify_claims: bool = False,
+    on_verify=None,
 ) -> dict:
     prompt = PROMPT_TMPL.format(
         topic=topic, tone=tone or DEFAULT_TONE, tone_guide=tones.guide(tone_preset),
@@ -85,7 +88,70 @@ def make_cards(
     data.setdefault("topic", topic)
     if self_fix:
         _self_fix(data, topic, model)
+    if verify_claims:
+        _verify_fix(data, topic, model, on_verify=on_verify)
     return data
+
+
+def _verify_fix(cards: dict, topic: str, model: str | None, rounds: int = 2,
+                on_verify=None) -> dict:
+    """근거 없는 수치를 웹검색으로 잡아 그 슬라이드만 다시 쓴다.
+
+    규칙 게이트(_self_fix)는 형식만 본다 → "35%가 잘못 입력했다" 같은 지어낸 수치가
+    통과했다. 여긴 바깥 근거로 대조해서(verify.py) 근거 못 찾은 수치를 걷어낸다.
+    재생성은 수치를 새로 지어내지 못하게 막은 프롬프트를 쓴다.
+    """
+    for rd in range(rounds):
+        if on_verify:
+            on_verify("checking", rd)
+        rep = verify.check_cards(cards, topic)
+        bad = rep["slides"]
+        if not bad:
+            break
+        slides = cards["slides"]
+        used = [(s.get("headline") or "").strip() for s in slides]
+        for idx, info in bad.items():
+            if on_verify:
+                on_verify("regen", idx, info.get("unverified", []))
+            role = slides[idx].get("role", "point")
+            try:
+                fresh = regen_slide(topic, role, used, model=model, no_numbers=True)
+            except Exception:
+                continue
+            slides[idx]["headline"] = fresh.get("headline", slides[idx].get("headline"))
+            slides[idx]["body"] = fresh.get("body", slides[idx].get("body"))
+            if fresh.get("image_query"):
+                slides[idx]["image_query"] = fresh["image_query"]
+            slides[idx].pop("sources", None)
+            used.append((fresh.get("headline") or "").strip())
+
+    # 마지막 빗질(검색 없음, 결정적).
+    # 웹검색은 호출마다 결과가 달라서 같은 문장이 통과했다 걸렸다 한다 → 라운드만으로는
+    # '근거 없는 수치가 안 남는다'를 보장 못 한다. 여기서 불변식을 강제한다:
+    #   수치가 남아 있으면 반드시 근거(sources)가 붙어 있다.
+    slides = cards["slides"]
+    used = [(s.get("headline") or "").strip() for s in slides]
+    for idx, s in enumerate(slides):
+        claims = verify.find_claims(f"{s.get('headline') or ''} {s.get('body') or ''}")
+        if not claims:
+            continue
+        backed = {c["claim"] for c in s.get("sources") or []}
+        if all(c in backed for c in claims):
+            continue
+        if on_verify:
+            on_verify("regen", idx, [c for c in claims if c not in backed])
+        try:
+            fresh = regen_slide(topic, s.get("role", "point"), used,
+                                model=model, no_numbers=True)
+        except Exception:
+            continue
+        s["headline"] = fresh.get("headline", s.get("headline"))
+        s["body"] = fresh.get("body", s.get("body"))
+        if fresh.get("image_query"):
+            s["image_query"] = fresh["image_query"]
+        s.pop("sources", None)
+        used.append((fresh.get("headline") or "").strip())
+    return cards
 
 
 def _self_fix(cards: dict, topic: str, model: str | None, rounds: int = 2) -> dict:
@@ -126,14 +192,23 @@ _ROLE_DESC = {
 }
 
 
+# 근거 대조에서 걸린 장을 다시 쓸 때. 여기서 또 수치를 지어내면 검증이 무의미해진다.
+_NO_NUMBERS = (
+    "\n[중요] 통계·비율·금액·날짜·기한 같은 구체적 수치는 절대 쓰지 마라. "
+    "확인되지 않은 숫자를 지어내는 것보다 수치 없이 행동을 구체적으로 지시하는 편이 낫다. "
+    "'무엇을 어떻게 하라'로 써라.")
+
+
 def regen_slide(topic: str, role: str, used_headlines: list[str],
-                model: str | None = None) -> dict:
+                model: str | None = None, no_numbers: bool = False) -> dict:
     """카드 1장의 카피만 새로 뽑는다(편집기 '다시 생성')."""
     hsize = "12자 내외" if role == "cover" else "6~10자 소제목"
     prompt = REGEN_TMPL.format(
         topic=topic, role_desc=_ROLE_DESC.get(role, _ROLE_DESC["point"]),
         used=", ".join(h for h in used_headlines if h) or "(없음)", hsize=hsize,
     )
+    if no_numbers:
+        prompt += _NO_NUMBERS
     data = generate_json(prompt, model=model, temperature=0.9)
     data["role"] = role
     data.setdefault("image_query", topic)

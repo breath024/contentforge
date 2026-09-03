@@ -172,6 +172,10 @@
         <input type="checkbox" id="research" checked>
         <span><b>📈 트렌드 분석해서 기획</b> — 같은 주제로 잘나간 콘텐츠를 분석해 벤치마킹 (영상 안 받고 제목·조회수만)</span>
       </label>
+      <label class="toggle" for="vclaims">
+        <input type="checkbox" id="vclaims" checked>
+        <span><b>🔎 수치 근거 대조</b> — 카피에 나온 %·금액·날짜를 웹에서 찾아보고, 근거 없으면 그 장을 숫자 없이 다시 씀 (생성이 좀 더 걸림)</span>
+      </label>
       <button class="gen" id="gen">카드뉴스 만들기</button>
       <div class="prog" id="prog">
         <div class="msg" id="msg">시작...</div>
@@ -286,7 +290,8 @@ async function generate(){
   try{
     const r = await fetch('/api/generate', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({topic, n:+$('#n').value, brand:$('#brand').value,
-        use_research: $('#research').checked, theme, tone_preset: tonePreset})});
+        use_research: $('#research').checked, theme, tone_preset: tonePreset,
+        verify_claims: $('#vclaims').checked})});
     const j = await r.json();
     if(j.error){ msg.textContent = '⚠️ ' + j.error; gen.disabled = false; return; }
     poll(j.job_id);

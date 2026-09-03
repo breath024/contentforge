@@ -8,8 +8,11 @@ import urllib.request
 import urllib.error
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-# 카피 품질 순: qwen2.5:14b > gemma3:27b > gemma3:4b. 있는 걸 자동 선택.
-PREFERRED = ["qwen2.5:14b", "gemma3:27b", "gemma3:12b", "gemma3:4b"]
+# 카피 품질 순. 있는 걸 자동 선택.
+# 2026-09-03 실측: gemma4:26b/12b는 이 프롬프트에서 format=json 스키마를 못 지킴
+#   (반복 붕괴 → "Unterminated string"). temp 0.9/0.6 둘 다 실패. 그래서 뒤로 뺐다.
+PREFERRED = ["huihui_ai/qwen3-abliterated:14b-v2", "qwen2.5:14b",
+             "gemma3:27b", "gemma3:12b", "gemma3:4b"]
 
 
 def _available_models() -> list[str]:

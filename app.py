@@ -50,7 +50,8 @@ def _slugify(topic: str) -> str:
 
 def _worker(job_id: str, topic: str, n: int, brand: str, model: str | None,
             use_research: bool = False, theme: str | None = None,
-            tone: str | None = None, tone_preset: str | None = None):
+            tone: str | None = None, tone_preset: str | None = None,
+            verify_claims: bool = False):
     job = JOBS[job_id]
     try:
         slug = _slugify(topic)
@@ -62,8 +63,19 @@ def _worker(job_id: str, topic: str, n: int, brand: str, model: str | None,
             references = research.reference_titles(r, k=8)
             job["references"] = references
         job.update(stage="기획", message="카피 생성 중...", slug=slug)
+
+        def on_verify(phase, *a):
+            # 근거 대조는 검색을 타서 느리다 → 뭘 하는 중인지 계속 보여준다
+            if phase == "checking":
+                job.update(stage="근거 대조", message="수치 근거 확인 중...")
+            else:
+                bad = ", ".join(a[1]) if len(a) > 1 and a[1] else ""
+                job.update(stage="근거 대조",
+                           message=f"근거 없는 수치({bad}) → {a[0] + 1}번 카드 다시 씀")
+
         cards = make_cards(topic, n=n, model=model, references=references,
-                           tone=tone, tone_preset=tone_preset)
+                           tone=tone, tone_preset=tone_preset,
+                           verify_claims=verify_claims, on_verify=on_verify)
         cards["brand"] = brand  # 재렌더(편집) 때 다시 쓰려고 저장
         if references:
             cards["references"] = references
@@ -265,13 +277,14 @@ class Handler(SimpleHTTPRequestHandler):
             use_research = bool(payload.get("use_research", False))
             theme = payload.get("theme") or themes.DEFAULT
             tone_preset = payload.get("tone_preset")
+            verify_claims = bool(payload.get("verify_claims", False))
             _seq["n"] += 1
             jid = f"job{_seq['n']}"
             JOBS[jid] = {"status": "running", "stage": "대기", "message": "시작",
                          "progress": 0.0, "topic": topic}
             threading.Thread(target=_worker,
                              args=(jid, topic, n, brand, model, use_research, theme,
-                                   None, tone_preset),
+                                   None, tone_preset, verify_claims),
                              daemon=True).start()
             return self._json({"job_id": jid, "model": model})
 
