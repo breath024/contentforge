@@ -7,6 +7,7 @@
   GET  /reader.html      리더기(카드뉴스 캐러셀 뷰어)
   POST /api/generate     {topic,n,brand} → job_id (백그라운드 생성)
   GET  /api/job?id=      진행상태
+  POST /api/cancel       {id} → 돌고 있는 job/batch 중지
   GET  /api/projects     생성된 카드뉴스 목록(최근순)
   GET  /api/project?slug= 슬라이드 + 카드 PNG 경로
   GET  /out/...          생성물 정적 서빙
@@ -14,6 +15,7 @@ ThreadingHTTPServer + 백그라운드 워커 패턴.
 """
 from __future__ import annotations
 import json
+import shutil
 import sys
 import threading
 import time
@@ -32,6 +34,7 @@ from generate import make_cards, regen_slide
 from render import render, render_card, img_path_for
 from images import fetch_one
 from llm import pick_model
+import cancel
 import research
 import storage
 import themes
@@ -41,6 +44,7 @@ ROOT = Path(__file__).parent
 OUT = ROOT / "out"
 JOBS: dict[str, dict] = {}
 BATCHES: dict[str, dict] = {}
+CANCELS: dict[str, threading.Event] = {}  # job/batch id → 중지 신호(JSON 으로 못 내보내서 따로 둔다)
 _seq = {"n": 0}
 
 
@@ -48,20 +52,29 @@ def _slugify(topic: str) -> str:
     return "".join(c if c.isalnum() else "_" for c in topic).strip("_")[:40] or "untitled"
 
 
+def _drop_if_new(out_dir: Path, was_there: bool):
+    """중지된 작업의 반쯤 만든 폴더 정리. 원래 있던 프로젝트(같은 주제 재생성)는 건드리지 않는다."""
+    if not was_there:
+        shutil.rmtree(out_dir, ignore_errors=True)
+
+
 def _worker(job_id: str, topic: str, n: int, brand: str, model: str | None,
             use_research: bool = False, theme: str | None = None,
             tone: str | None = None, tone_preset: str | None = None,
             verify_claims: bool = False):
     job = JOBS[job_id]
+    cancel.bind(CANCELS[job_id])
+    slug = _slugify(topic)
+    out_dir = OUT / slug
+    was_there = out_dir.exists()
     try:
-        slug = _slugify(topic)
-        out_dir = OUT / slug
         references = None
         if use_research:
             job.update(stage="트렌드", message="인기 콘텐츠 분석 중...", slug=slug)
             r = research.collect(topic, n=10)
             references = research.reference_titles(r, k=8)
             job["references"] = references
+            cancel.check()
         job.update(stage="기획", message="카피 생성 중...", slug=slug)
 
         def on_verify(phase, *a):
@@ -82,6 +95,7 @@ def _worker(job_id: str, topic: str, n: int, brand: str, model: str | None,
         job.update(stage="렌더", message="카드 이미지 굽는 중...", cards=[])
 
         def on_progress(phase, i, total):
+            cancel.check()
             if phase == "images":
                 job["message"] = "배경 이미지 받는 중..."
             else:
@@ -97,6 +111,9 @@ def _worker(job_id: str, topic: str, n: int, brand: str, model: str | None,
             print(f"[storage] 상한 초과 → {len(removed)}개 정리: {removed}")
         job.update(stage="완료", status="done", message=f"{len(pngs)}장 완성",
                    progress=1.0, count=len(pngs))
+    except cancel.Cancelled:
+        _drop_if_new(out_dir, was_there)
+        job.update(stage="중지", status="cancelled", message="중지했어요")
     except Exception as e:
         traceback.print_exc()
         job.update(stage="에러", status="error", message=str(e))
@@ -106,18 +123,23 @@ def _batch_worker(bid: str, persona: dict, topics: list[str], n: int,
                   model: str | None, use_research: bool):
     """페르소나 톤·테마·브랜드로 주제들을 순차 일괄 제작."""
     b = BATCHES[bid]
+    ev = CANCELS[bid]
+    cancel.bind(ev)
     brand = persona.get("brand", "@my.page")
     theme = persona.get("theme") or themes.DEFAULT
     tone = persona.get("tone")
     tone_preset = persona.get("tone_preset")
     used_covers: list[str] = []  # 배치 내 표지 누적 → 서로 안 겹치게
     for item in b["items"]:
+        if ev.is_set():
+            break
         topic = item["topic"]
         b["current"] = topic
         item["status"] = "running"
+        slug = _slugify(topic)
+        out_dir = OUT / slug
+        was_there = out_dir.exists()
         try:
-            slug = _slugify(topic)
-            out_dir = OUT / slug
             refs = None
             if use_research:
                 refs = research.reference_titles(research.collect(topic, n=10), k=8)
@@ -128,17 +150,25 @@ def _batch_worker(bid: str, persona: dict, topics: list[str], n: int,
                 used_covers.append(cov)
             cards["brand"] = brand
             cards["theme"] = theme
-            render(cards, out_dir, brand=brand, theme=theme)
+            render(cards, out_dir, brand=brand, theme=theme,
+                   on_progress=lambda *_: cancel.check())
             storage.cleanup_artifacts(out_dir)
             item.update(status="done", slug=slug)
+        except cancel.Cancelled:
+            _drop_if_new(out_dir, was_there)
+            item["status"] = "cancelled"
+            break
         except Exception as e:
             traceback.print_exc()
             item.update(status="error", error=str(e))
         b["done"] += 1
+    for item in b["items"]:
+        if item["status"] == "queued":
+            item["status"] = "cancelled"
     removed = storage.enforce_cap()
     if removed:
         print(f"[storage] 배치 후 정리: {removed}")
-    b["status"] = "done"
+    b["status"] = "cancelled" if ev.is_set() else "done"
     b["current"] = None
 
 
@@ -282,11 +312,26 @@ class Handler(SimpleHTTPRequestHandler):
             jid = f"job{_seq['n']}"
             JOBS[jid] = {"status": "running", "stage": "대기", "message": "시작",
                          "progress": 0.0, "topic": topic}
+            CANCELS[jid] = threading.Event()
             threading.Thread(target=_worker,
                              args=(jid, topic, n, brand, model, use_research, theme,
                                    None, tone_preset, verify_claims),
                              daemon=True).start()
             return self._json({"job_id": jid, "model": model})
+
+        if u.path == "/api/cancel":
+            # 신호만 세운다. 워커가 다음 확인 지점(LLM 조각·검색·카드 1장)에서 멈춘다.
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length).decode("utf-8", "replace").strip()
+            cid = (json.loads(raw) if raw else {}).get("id", "")
+            state = JOBS.get(cid) or BATCHES.get(cid)
+            if not state or cid not in CANCELS:
+                return self._json({"error": "그런 작업 없음"}, 404)
+            if state.get("status") != "running":
+                return self._json({"ok": False, "status": state.get("status")})
+            CANCELS[cid].set()
+            state["message"] = "중지하는 중..."
+            return self._json({"ok": True})
 
         if u.path in ("/api/persona_create", "/api/persona_delete", "/api/batch_generate"):
             length = int(self.headers.get("Content-Length", 0))
@@ -320,6 +365,7 @@ class Handler(SimpleHTTPRequestHandler):
             BATCHES[bid] = {"status": "running", "persona": persona["name"],
                             "items": [{"topic": t, "status": "queued"} for t in topics],
                             "done": 0, "total": len(topics), "current": None}
+            CANCELS[bid] = threading.Event()
             threading.Thread(target=_batch_worker,
                              args=(bid, persona, topics, n, model, use_research),
                              daemon=True).start()

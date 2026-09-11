@@ -24,6 +24,8 @@ import time
 import urllib.parse
 import urllib.request
 
+import cancel
+
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
       "Accept-Language": "ko-KR,ko;q=0.9"}
@@ -170,11 +172,13 @@ def check_claim(claim: str, query: str, keys: list[str], top_k: int = TOP_K) -> 
     want = _norm(claim)
     if not want:
         return {"ok": True, "claim": claim, "source": None, "match": None}
+    cancel.check()
     results = search_results(query)[:top_k]
     for r in results:                                   # 1차: 스니펫(추가 요청 0)
         if _supported(r["snippet"], want, keys):
             return {"ok": True, "claim": claim, "source": r["url"], "match": "snippet"}
     for r in results:                                   # 2차: 원문(느리지만 정확)
+        cancel.check()                                  # 원문 한 장에 최대 8초라 매번 본다
         if _supported(page_text(r["url"]), want, keys):
             return {"ok": True, "claim": claim, "source": r["url"], "match": "page"}
     return {"ok": False, "claim": claim, "source": None, "match": None}

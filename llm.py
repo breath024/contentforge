@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import urllib.request
 import urllib.error
+import cancel
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 # 카피 품질 순. 있는 걸 자동 선택.
@@ -51,10 +52,13 @@ def generate_json(prompt: str, model: str | None = None, temperature: float = 0.
         raise RuntimeError(
             "Ollama에 모델이 없거나 서버가 안 떠있음. `ollama serve` + `ollama pull gemma3:4b` 확인."
         )
+    cancel.check()
+    # 스트림으로 받는다: 조각마다 중지 신호를 보고, 중지면 연결을 끊는다
+    # → Ollama 가 생성을 멈춰 GPU 가 바로 풀린다(stream=False 면 끝까지 기다려야 함).
     payload = {
         "model": model,
         "prompt": prompt,
-        "stream": False,
+        "stream": True,
         "format": "json",
         "options": {"temperature": temperature},
     }
@@ -63,10 +67,19 @@ def generate_json(prompt: str, model: str | None = None, temperature: float = 0.
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"},
     )
+    parts: list[str] = []
     with urllib.request.urlopen(req, timeout=180) as r:
-        resp = json.loads(r.read().decode("utf-8"))
-    text = resp.get("response", "").strip()
-    return json.loads(text)
+        for line in r:
+            cancel.check()
+            if not line.strip():
+                continue
+            chunk = json.loads(line.decode("utf-8"))
+            if chunk.get("error"):
+                raise RuntimeError(f"Ollama: {chunk['error']}")
+            parts.append(chunk.get("response", ""))
+            if chunk.get("done"):
+                break
+    return json.loads("".join(parts).strip())
 
 
 if __name__ == "__main__":
