@@ -3,21 +3,31 @@
 > 주제 한 줄 → AI 카드뉴스(이미지+카피) 자동 생성 + 인스타식 리더기.
 > 숏폼 자동화 에이전시들이 파는 결과물을 직접 만들어보려고 시작했다.
 
+> 작업 전에 **`작업 유의사항.md`** 를 먼저 읽을 것(또 밟을 지뢰 모음).
+
 ## 다음에 해야 할 것
 
-1. **`verify.py` 실물 검증** — 만들어만 놓고 한 번도 안 돌렸다. 입구에서 `🔎 수치 근거 대조`
+1. **팀 베타테스터 모집 카드뉴스 마무리** — 덱은 `out/` 에 있고(리더기에서 편집), 납품 폴더·zip 은
+   루트에 있다(`.git/info/exclude` 로 제외, 커밋 금지). **모집 인원·기간·혜택·신청 방법**을 팀원에게 받아
+   6~7장에 넣고 다시 zip. 지어내지 말 것.
+2. **■중지 버튼 브라우저 실물 확인** — API 로만 검증했다. 입구에서 단발·배치 각각 눌러보기.
+3. **`verify.py` 실물 검증** — 만들어만 놓고 한 번도 안 돌렸다. 입구에서 `🔎 수치 근거 대조`
    토글 켜고 한 편 뽑아, ①근거 없는 수치를 실제로 잡는지 ②생성이 몇 초 더 걸리는지 잰다.
-2. **모델 재선정 확인** — `llm.py` PREFERRED 맨 앞이 `huihui_ai/qwen3-abliterated:14b-v2`로
-   바뀌었다. 카피 품질이 qwen2.5:14b 보다 나은지 같은 주제로 대조.
-3. PEXELS_API_KEY 연결(무료 1분) — 아직 picsum 폴백이다.
+4. **PEXELS_API_KEY 연결**(무료 1분) — Openverse 는 주제 안 맞거나 960px 이라 흐리다.
+   겸사겸사 `images.py` 가 CC BY 사진의 출처를 안 남기는 것도 고칠 것(slides.json 에 credits).
+5. **모델 재선정 확인** — `llm.py` PREFERRED 맨 앞이 `huihui_ai/qwen3-abliterated:14b-v2`.
+   카피 품질이 qwen2.5:14b 보다 나은지 같은 주제로 대조. (가끔 `{}` 빈 응답 → 재시도로 막아둠)
+6. CTA 뱃지 `SAVE · FOLLOW` 고정 — 모집·공지형 글엔 어색하다. 슬라이드별로 바꿀 수 있게.
 
 ## ⚡ 즉시 실행
+**바탕화면 `ContentForge` 바로가기** → 런처 창(`launcher.pyw`)에서 켜기/끄기. 켜지면 브라우저 자동으로 열림.
+창 닫으면 거기서 켠 서버도 꺼짐. `.pyw` 연결이 없는 PC라 바로가기가 `pythonw.exe`를 직접 가리킨다.
 ```powershell
 cd C:\Users\USER\Desktop\ContentForge
 $env:PYTHONUTF8=1; python app.py    # → http://127.0.0.1:8770
 # CLI만:  python run.py "직장인 점심시간 10분 스트레칭"
 ```
-※ Ollama 떠 있어야 함(`ollama serve`). 모델 자동선택 qwen2.5:14b > gemma3 순.
+※ Ollama 떠 있어야 함(`ollama serve`). 모델 자동선택 `llm.PREFERRED` 순(qwen3-abliterated > qwen2.5:14b > gemma3).
 ※ Chrome 필수(헤드리스로 카드 PNG 굽기). Edge 폴백.
 
 ## 📁 파일 맵
@@ -29,7 +39,9 @@ $env:PYTHONUTF8=1; python app.py    # → http://127.0.0.1:8770
 | `images.py` | 배경사진 조달. `PEXELS_API_KEY` 있으면 실사검색 / 없으면 picsum 폴백. out/<slug>/img/ 다운로드 |
 | `render.py` | 슬라이드 → 1080×1350 카드 HTML → Chrome 헤드리스 PNG. cover/cta=풀배경+오버레이, point=상단 이미지밴드+밝은 패널 |
 | `verify.py` | **근거 대조 게이트**(2026-09-03). 슬라이드의 %·금액·날짜를 뽑아 Bing 검색 결과 원문과 대조 → 어디에도 없으면 그 장을 숫자 없이 재생성. 검색엔진 함정은 이 파일 docstring 이 원본 |
-| `index.html` | 입구. 주제입력 + 진행률 폴링 + "내 작업" 갤러리 |
+| `launcher.pyw` | 서버 켜기/끄기 창(tkinter). 끄기는 8770 포트 주인을 자식(Chrome)까지 taskkill → 터미널에서 켠 서버도 끔 |
+| `cancel.py` | 생성 중지 신호. 워커가 Event 를 bind, LLM 스트림 조각·근거 검색·카드 1장마다 check(). `Cancelled`는 BaseException(재생성 `except Exception` 에 삼켜지지 않게) |
+| `index.html` | 입구. 주제입력 + 진행률 폴링 + ■중지 버튼(단발·배치, `/api/cancel`) + "내 작업" 갤러리 |
 | `reader.html` | 리더기. `?slug=` 캐러셀(←→/키보드/점), 개별·전체 저장 |
 | `out/<slug>/` | 산출물: card_NN.png, card_NN.html, img/, slides.json |
 
@@ -39,6 +51,9 @@ $env:PYTHONUTF8=1; python app.py    # → http://127.0.0.1:8770
 - **`render.py`의 POINT_CSS는 `PAGE.format()`에 값으로 삽입** → 단일 중괄호(완성형 CSS)여야 함. `{{` 쓰면 literal로 새어나가 CSS 통째 무효(텍스트 사라짐). FULL_CSS는 `.format()` 호출하므로 `{{` 유지.
 - **검색 기반 검증의 함정**(캡차·로케일·자기확인·리다이렉트)은 `verify.py` 상단 docstring 에 실측으로 적혀 있다. 거기를 먼저 읽을 것.
 - 콘솔 cp949 → 엔트리에서 stdout/stderr `reconfigure(utf-8)`. 실행은 `PYTHONUTF8=1` 권장.
+- **`llm.generate_json` 은 스트리밍**(2026-09-11) — 중지 신호를 조각마다 보려고. `stream:false` 로 되돌리면
+  ■중지가 LLM 한 번(최대 180초)이 끝날 때까지 안 먹는다.
+- 한글 줄바꿈(`keep-all`)·사진 위 글자색·공개 저장소 제품명 등 새로 밟은 것은 `작업 유의사항.md`.
 
 ## 🎯 현재 상태 (2026-06-12) — "휘어잡는 완성품" 빌드 중
 **목표: 진짜 사람을 붙잡는 완성품.** 4축: ①디자인 다중테마 ✅ ②카피 톤 프리셋 ✅ ③생성중 실시간 미리보기+UX ✅ ④이미지 고급화(Pexels) ⬜(키 필요)
@@ -66,5 +81,6 @@ $env:PYTHONUTF8=1; python app.py    # → http://127.0.0.1:8770
 5. 카드 템플릿 다양화(현재 1테마) + 폰트/색 브랜드 프리셋.
 
 ## 기록
+- `logs/2026-09-11-log.md` — 생성 중지 버튼, 서버 런처, 팀 모집 카드뉴스 제작 중 렌더러 가독성 수정, qwen3 `{}` 재시도
 - `logs/2026-09-04-log.md` — 근거 대조 게이트 커밋(9/3 작업분), 잔디 소급
 - `logs/2026-06-10-log.md` — 초기 파이프라인 E2E (HANDOFF 에서 옮김)
