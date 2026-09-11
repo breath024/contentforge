@@ -73,8 +73,13 @@ def make_cards(
         topic=topic, tone=tone or DEFAULT_TONE, tone_guide=tones.guide(tone_preset),
         n=n, last=n - 1, benchmark=_benchmark_block(references),
         avoid=_avoid_block(avoid))
-    data = generate_json(prompt, model=model, temperature=0.9)
-    slides = data.get("slides", [])
+    # qwen3 가 가끔 생성 없이 곧바로 "{}" 를 낸다(2026-09-11 실측, 0.4초 만에 빈 응답).
+    # 다시 물으면 대개 제대로 나온다 → 빈 응답이면 두 번까지 재시도.
+    for _ in range(3):
+        data = generate_json(prompt, model=model, temperature=0.9)
+        slides = data.get("slides", [])
+        if slides:
+            break
     if not slides:
         raise RuntimeError(f"슬라이드가 비었음. LLM 응답: {data}")
     # role 보정: 첫 장 cover, 끝 장 cta 강제
