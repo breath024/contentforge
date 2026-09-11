@@ -51,8 +51,11 @@ html,body{width:1080px;height:1350px;overflow:hidden;}
 .content{position:absolute;left:0;right:0;z-index:3;padding:0 78px;
   display:flex;flex-direction:column;}
 .bar{width:104px;height:13px;background:var(--accent);border-radius:7px;margin-bottom:34px;}
-.headline{font-family:var(--font);font-weight:800;line-height:1.16;letter-spacing:-1px;}
-.body{font-family:var(--body-font);font-weight:500;line-height:1.55;margin-top:30px;}
+/* keep-all: 한글을 어절(띄어쓰기) 단위로만 줄바꿈 — 없으면 "써보실래/요?"처럼 글자 중간에서 끊긴다 */
+.headline{font-family:var(--font);font-weight:var(--head-weight,800);line-height:1.16;letter-spacing:-1px;
+  word-break:keep-all;}
+.body{font-family:var(--body-font);font-weight:500;line-height:1.55;margin-top:30px;
+  word-break:keep-all;}
 .foot{position:absolute;bottom:54px;font-size:26px;font-weight:600;opacity:.62;z-index:6;}
 
 /* ===== COVER / CTA : 풀블리드, 텍스트 하단정렬 ===== */
@@ -78,7 +81,8 @@ html,body{width:1080px;height:1350px;overflow:hidden;}
 .point.has-photo .bg::after{background:linear-gradient(180deg,
   rgba(0,0,0,.2) 0%,rgba(0,0,0,0) 55%,var(--point-bg) 100%);}
 .point.has-photo .content{top:44%;bottom:0;justify-content:center;padding-bottom:70px;}
-.point.has-photo .badge{color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.6);}
+/* 사진 위 작은 글자(뱃지·번호)는 테마색이면 사진에 묻힌다 → 흰색 + 그림자 */
+.has-photo .badge,.has-photo .num{color:#fff;opacity:1;text-shadow:0 2px 14px rgba(0,0,0,.6);}
 /* 무사진 테마: 풀컬러 중앙 타이포 */
 .point.no-photo .content{top:0;bottom:0;justify-content:center;}
 """
@@ -112,7 +116,8 @@ def _card_html(slide: dict, idx: int, total: int, brand: str,
     fit_h = _fit_px(base_h, headline_raw, 3)
     body = slide.get("body", "").strip()
     body_html = f'<div class="body">{html.escape(body)}</div>' if body else ""
-    badge = {"cover": "CONTENTFORGE", "cta": "SAVE · FOLLOW"}.get(role, "POINT")
+    # 표지 뱃지는 사용자 브랜드. 예전엔 도구 이름이 박혀 남의 계정 카드에도 찍혔다.
+    badge = {"cover": html.escape(brand), "cta": "SAVE · FOLLOW"}.get(role, "POINT")
     foot = "← 넘겨서 보기" if role == "cover" else brand
     bg = (f'<div class="bg" style="background-image:url(\'{_file_uri(img)}\')"></div>'
           if photo else "")

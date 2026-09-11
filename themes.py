@@ -62,6 +62,7 @@ THEMES: dict[str, dict] = {
         "vars": {
             "--font": "'Pretendard',sans-serif",
             "--body-font": "'Pretendard',sans-serif",
+            "--head-weight": "700",  # 800 은 큰 글씨에서 뭉개져 가독성이 떨어졌다(2026-09-11 피드백)
             "--accent": "#4f46e5",
             "--cover-bg": "#0f172a", "--cover-fg": "#ffffff",
             "--point-bg": "#ffffff", "--point-fg": "#0f172a", "--point-sub": "#64748b",
