@@ -57,6 +57,21 @@ THEMES: dict[str, dict] = {
             "--cover-size": "100px", "--point-size": "78px", "--cta-size": "90px",
         },
     },
+    "cinema": {
+        "label": "시네마", "desc": "사진 풀블리드 + 아래로 어두워지는 그라데이션, 흰 글씨",
+        "photo": True, "full_bleed": True,
+        "vars": {
+            "--font": "'Pretendard',sans-serif",
+            "--body-font": "'Pretendard',sans-serif",
+            "--head-weight": "700",
+            "--accent": "#a5b4fc",
+            "--cover-bg": "#0f172a", "--cover-fg": "#ffffff",
+            # 풀블리드라 point 도 사진 위. 사진을 못 받은 장만 이 배경색이 보인다.
+            "--point-bg": "#0f172a", "--point-fg": "#ffffff", "--point-sub": "#dbe1ea",
+            "--cta-bg": "linear-gradient(135deg,#312e81,#4f46e5)", "--cta-fg": "#ffffff",
+            "--cover-size": "86px", "--point-size": "74px", "--cta-size": "78px",
+        },
+    },
     "minimal": {
         "label": "미니멀", "desc": "절제된 여백 + 사진, 고급감", "photo": True,
         "vars": {
@@ -83,6 +98,11 @@ def css_vars(theme: str | None) -> str:
 
 def uses_photo(theme: str | None) -> bool:
     return get(theme)["photo"]
+
+
+def full_bleed(theme: str | None) -> bool:
+    """point 도 사진을 꽉 채우고 하단 그라데이션 위에 흰 글씨를 얹는 테마인가."""
+    return bool(get(theme).get("full_bleed"))
 
 
 def options() -> list[dict]:

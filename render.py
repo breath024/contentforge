@@ -81,6 +81,19 @@ html,body{width:1080px;height:1350px;overflow:hidden;}
 .point.has-photo .bg::after{background:linear-gradient(180deg,
   rgba(0,0,0,.2) 0%,rgba(0,0,0,0) 55%,var(--point-bg) 100%);}
 .point.has-photo .content{top:44%;bottom:0;justify-content:center;padding-bottom:70px;}
+/* 풀블리드 테마(themes: full_bleed): point 도 사진을 꽉 채우고 아래로 갈수록 어두워지는
+   그라데이션 위에 흰 글자. 흰 패널이 화면 절반을 먹어 눈이 아픈 문제를 없앤다. */
+.point.has-photo.bleed .bg{height:100%;}
+.point.has-photo.bleed .bg::after{background:linear-gradient(180deg,
+  rgba(0,0,0,.46) 0%,rgba(0,0,0,.14) 30%,rgba(0,0,0,.70) 68%,rgba(0,0,0,.93) 100%);}
+.point.has-photo.bleed .content{top:auto;bottom:140px;justify-content:flex-end;padding-bottom:0;
+  color:#fff;}
+.point.has-photo.bleed .headline{color:#fff;text-shadow:0 2px 24px rgba(0,0,0,.45);}
+.point.has-photo.bleed .body{color:rgba(255,255,255,.88);text-shadow:0 2px 18px rgba(0,0,0,.5);}
+.point.has-photo.bleed .foot{color:#fff;opacity:.72;}
+/* cover/cta 도 같은 세기로 — 테마 간 톤이 튀지 않게 */
+.bleed.cover .bg::after,.bleed.cta .bg::after{background:linear-gradient(180deg,
+  rgba(0,0,0,.42) 0%,rgba(0,0,0,.16) 30%,rgba(0,0,0,.74) 70%,rgba(0,0,0,.94) 100%);}
 /* 사진 위 작은 글자(뱃지·번호)는 테마색이면 사진에 묻힌다 → 흰색 + 그림자 */
 .has-photo .badge,.has-photo .num{color:#fff;opacity:1;text-shadow:0 2px 14px rgba(0,0,0,.6);}
 /* 무사진 테마: 풀컬러 중앙 타이포 */
@@ -107,7 +120,8 @@ def _card_html(slide: dict, idx: int, total: int, brand: str,
                img: Path | None, theme: str) -> str:
     role = slide.get("role", "point")
     photo = themes.uses_photo(theme) and img is not None
-    cls = f"{role} {'has-photo' if photo else 'no-photo'}"
+    bleed = " bleed" if (photo and themes.full_bleed(theme)) else ""
+    cls = f"{role} {'has-photo' if photo else 'no-photo'}{bleed}"
     headline_raw = slide.get("headline", "")
     headline = html.escape(headline_raw).replace("\n", "<br>")
     tvars = themes.get(theme)["vars"]
@@ -117,7 +131,9 @@ def _card_html(slide: dict, idx: int, total: int, brand: str,
     body = slide.get("body", "").strip()
     body_html = f'<div class="body">{html.escape(body)}</div>' if body else ""
     # 표지 뱃지는 사용자 브랜드. 예전엔 도구 이름이 박혀 남의 계정 카드에도 찍혔다.
-    badge = {"cover": html.escape(brand), "cta": "SAVE · FOLLOW"}.get(role, "POINT")
+    # 슬라이드가 badge 를 주면 그걸 쓴다(모집·공지형은 SAVE·FOLLOW 가 어색하다)
+    badge = slide.get("badge") or {"cover": brand, "cta": "SAVE · FOLLOW"}.get(role, "POINT")
+    badge = html.escape(str(badge))
     foot = "← 넘겨서 보기" if role == "cover" else brand
     bg = (f'<div class="bg" style="background-image:url(\'{_file_uri(img)}\')"></div>'
           if photo else "")
