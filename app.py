@@ -34,7 +34,7 @@ for _s in (sys.stdout, sys.stderr):
 
 from generate import make_cards, regen_slide
 from render import render, render_card, img_path_for
-from images import fetch_one, search_candidates, fetch_chosen
+from images import fetch_one, search_candidates_ex, fetch_chosen
 from llm import pick_model
 import cancel
 import research
@@ -284,8 +284,10 @@ class Handler(SimpleHTTPRequestHandler):
             # 풀블리드로 깔리는 장(표지·CTA, 그리고 full_bleed 테마의 본문)은 세로 사진이 낫다
             th = cards.get("theme")
             tall = slide.get("role") in ("cover", "cta") or themes.full_bleed(th)
-            return self._json({"query": query, "tall": tall,
-                               "candidates": search_candidates(query, want_tall=tall, limit=12)})
+            cands, used = search_candidates_ex(query, want_tall=tall, limit=12)
+            # used = 실제로 결과가 나온 검색어. 입력칸에 이걸 되돌려줘야 사용자가 손볼 수 있다
+            return self._json({"query": used, "asked": query, "tall": tall,
+                               "candidates": cands})
 
         if u.path == "/api/themes":
             return self._json({"themes": themes.options(), "default": themes.DEFAULT})

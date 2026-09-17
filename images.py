@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 import hashlib
+import re
 import json
 import os
 import urllib.parse
@@ -129,49 +130,86 @@ OPENVERSE_MAX_PAGE = 20
 CC0_LICENSES = "cc0,pdm"
 
 
-def search_candidates(query: str, want_tall: bool = False, limit: int = 12) -> list[dict]:
-    """CC0/PDM 사진 후보 목록. 풀블리드(표지·CTA)엔 세로 사진을 앞세운다.
+def _clean_title(t: str) -> str:
+    """Openverse 의 title 에 HTML 조각이 통째로 들어오는 소스가 있다(wikimedia 계열).
+    그대로 두면 출처 파일에 태그가 박힌다."""
+    t = re.sub(r"<[^>]+>", " ", t or "")
+    t = re.sub(r"\s+", " ", t).strip()
+    return t[:120] or "(제목없음)"
+
+
+def _query_variants(query: str) -> list[str]:
+    """LLM 이 뽑는 image_query 는 "AI automation, video editing" 처럼 쉼표 나열이 잦은데
+    Openverse 는 이런 긴 나열에 0건을 낸다(2026-09-17 실측). 쉼표를 털고, 그래도 안 나오면
+    뒤쪽 두 단어 → 앞쪽 두 단어 → 마지막 한 단어로 좁혀 가며 다시 묻는다."""
+    q = (query or "").replace(",", " ").replace("·", " ")
+    words = [w for w in q.split() if w]
+    if not words:
+        return ["minimal background"]
+    out = [" ".join(words)]
+    for cand in (" ".join(words[-2:]), " ".join(words[:2]), words[-1]):
+        if cand and cand not in out:
+            out.append(cand)
+    return out
+
+
+def _search_page(query: str, page: int) -> list[dict]:
+    u = ("https://api.openverse.org/v1/images/?" + urllib.parse.urlencode(
+        {"q": query, "page_size": OPENVERSE_MAX_PAGE, "page": page,
+         "license": CC0_LICENSES, "mature": "false"}))
+    try:
+        req = urllib.request.Request(u, headers={"User-Agent": "ContentForge/1.0 (cardnews)"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.loads(r.read().decode("utf-8")).get("results", [])
+    except Exception:
+        return []
+
+
+def search_candidates_ex(query: str, want_tall: bool = False,
+                         limit: int = 12) -> tuple[list[dict], str]:
+    """CC0/PDM 후보 목록과 '실제로 먹힌 검색어'를 함께 돌려준다.
 
     한 페이지(20건)만 긁으면 해상도 하한에 걸려 후보가 한두 장만 남는 검색어가 많다
     (2026-09-17 'coffee shop' → 1장). 원하는 수가 찰 때까지 다음 페이지를 더 본다.
     """
-    query = (query or "").strip() or "minimal background"
-    out: list[dict] = []
-    seen: set[str] = set()
-    for page in range(1, 4):
-        u = ("https://api.openverse.org/v1/images/?" + urllib.parse.urlencode(
-            {"q": query, "page_size": OPENVERSE_MAX_PAGE, "page": page,
-             "license": CC0_LICENSES, "mature": "false"}))
-        try:
-            req = urllib.request.Request(
-                u, headers={"User-Agent": "ContentForge/1.0 (cardnews)"})
-            with urllib.request.urlopen(req, timeout=20) as r:
-                results = json.loads(r.read().decode("utf-8")).get("results", [])
-        except Exception:
-            break
-        if not results:
-            break
-        for c in results:
-            w, h = c.get("width") or 0, c.get("height") or 0
-            url = c.get("url")
-            if not url or url in seen:
-                continue
-            if min(w, h) < 800:          # 960px 짜리를 풀블리드로 깔면 흐리다
-                continue
-            seen.add(url)
-            out.append({
-                "url": url, "thumb": c.get("thumbnail"),
-                "title": c.get("title") or "(제목없음)",
-                "creator": c.get("creator") or "(작자미상)",
-                "license": (c.get("license") or "").upper(),
-                "landing": c.get("foreign_landing_url") or url,
-                "w": w, "h": h,
-            })
-        if len(out) >= limit * 2:
-            break
-    # 원하는 방향(세로/가로)을 먼저, 그 다음 해상도 큰 순
+    for q in _query_variants(query):
+        out: list[dict] = []
+        seen: set[str] = set()
+        for page in range(1, 4):
+            results = _search_page(q, page)
+            if not results:
+                break
+            for c in results:
+                w, h = c.get("width") or 0, c.get("height") or 0
+                url = c.get("url")
+                if not url or url in seen:
+                    continue
+                if min(w, h) < 800:      # 960px 짜리를 풀블리드로 깔면 흐리다
+                    continue
+                seen.add(url)
+                out.append({
+                    "url": url, "thumb": c.get("thumbnail"),
+                    "title": _clean_title(c.get("title")),
+                    "creator": c.get("creator") or "(작자미상)",
+                    "license": (c.get("license") or "").upper(),
+                    "landing": c.get("foreign_landing_url") or url,
+                    "w": w, "h": h,
+                })
+            if len(out) >= limit * 2:
+                break
+        if len(out) >= 4:                # 고를 만큼 나왔으면 이 검색어로 확정
+            # 원하는 방향(세로/가로)을 먼저, 그 다음 해상도 큰 순
+            out.sort(key=lambda c: ((c["h"] >= c["w"]) == want_tall, min(c["w"], c["h"])),
+                     reverse=True)
+            return out[:limit], q
+        last = (out, q)
+    out, q = last
     out.sort(key=lambda c: ((c["h"] >= c["w"]) == want_tall, min(c["w"], c["h"])), reverse=True)
-    return out[:limit]
+    return out[:limit], q
+
+
+def search_candidates(query: str, want_tall: bool = False, limit: int = 12) -> list[dict]:
+    return search_candidates_ex(query, want_tall, limit)[0]
 
 
 def fetch_chosen(url: str, out_dir, i: int) -> Path | None:
