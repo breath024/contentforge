@@ -7,28 +7,24 @@
 
 ## 다음에 해야 할 것
 
-> **현실 점검(2026-09-11):** 지금 도구 혼자서는 남에게 넘길 덱이 안 나온다. 9/11 팀 모집 덱은
-> ContentForge 가 만든 게 아니다 — AI 초안은 버리고 **카피를 사람이 새로 썼고**, 사진도 `images.py` 를 안 쓰고
-> **Openverse 후보를 사람이 눈으로 골랐다.** ContentForge 는 테마·레이아웃·PNG 굽기(`render_card`)만 했다.
-> 아래 2~4번이 "앱에 주제 넣으면 그 수준이 나온다"로 가는 길이다.
+> **현재(2026-09-17):** 9/11 에 사람이 손으로 하던 두 가지가 앱에 들어갔다 — ①편집기 **🖼️ 사진 고르기**
+> (Openverse cc0·pdm 후보 그리드 + 📁 내 사진 올리기, `사진_출처.txt` 자동 기록) ②입구·페르소나 **제품 사실 칸**
+> (적은 사실만 쓰고, 사실에 없는 숫자는 그 장을 다시 씀). 풀블리드 **cinema** 테마, 슬라이드 `badge` 필드도 생김.
+> 남은 약점은 **로컬 카피가 밋밋하다**(사실을 거의 그대로 옮김)와 **자동 조달 사진이 엉뚱하다**.
 
-1. **팀 베타테스터 모집 카드뉴스 마무리** — 덱은 `out/` 에 있고(리더기에서 편집), 납품 폴더·zip 은
-   루트에 있다(`.git/info/exclude` 로 제외, 커밋 금지). **모집 인원·기간·혜택·신청 방법**을 팀원에게 받아
-   6~7장에 넣고 다시 zip. 지어내지 말 것. 카피는 손으로 쓴 것이니 **'AI 재생성' 누르지 말고 텍스트 수정으로.**
-2. **제품 정보 입력 칸** — 입구·페르소나에 "사실(제품 설명·혜택·금지어)" 칸을 두고 `make_cards` 프롬프트에
-   별도 블록으로 넣는다(지금은 tone 칸에 욱여넣어야 하고 그래도 무시된다). 문서에 없는 숫자는 쓰지 말라는
-   규칙도 같이. 검증: 같은 주제로 칸 비움/채움 비교 → 표지에 핵심 문구가 들어가는지.
-3. **사진 후보 고르기** — 편집기 '사진' 버튼이 한 장씩 돌려보는 대신 후보 6~12장 그리드를 띄워 고르게.
-   Openverse 는 `license=cc0,pdm` 로 거르고, 고른 사진의 출처를 slides.json 에 `image_credits` 로 남긴다
-   (지금 자동 조달은 CC BY 가 섞이는데 출처를 안 남긴다). 풀블리드(표지·CTA)엔 세로 사진 우선.
-4. **CTA 뱃지 문구** — `SAVE · FOLLOW` 고정(`render._card_html`). 모집·공지형엔 어색하다.
-   슬라이드에 `badge` 필드를 두고 편집기에서 바꿀 수 있게.
+1. **지원금 앱 덱 마무리 확인** — 납품 `바탕화면 납품 폴더/`(원본 `out/ 의 해당 폴더`, 커밋 금지).
+   호윤 답 대기: ①6번 헤드라인 "사장님, 먼저 써보실래요?"가 9/11 덱 표지와 겹침 ②6번에 신청 링크 없음.
+   바탕화면의 옛 `_전체보기.png` 는 미니멀 버전(뷰어가 잡고 있어 못 덮음) → 확인 후 정리.
+2. **자동 조달 사진이 주제와 무관** — 생성 때 `images.fetch_one` 이 넓은 `image_query`(`business store government`)로
+   받아 군인 사진이 나옴. 출처(`image_credit`)도 안 남는다. 안: 생성 때도 `search_candidates_ex` 1순위를 쓰고 출처 기록,
+   또는 cinema 처럼 사진이 큰 테마는 "사진 고르기 전까지 자리표시" 로.
+3. **'카피 다시'(편집기 한 장 재생성)에 사실 숫자 검사 없음** — `regen_card` 는 `regen_slide(facts=)` 한 번뿐,
+   `_facts_fix` 를 안 탄다. 한 장짜리 버전으로 감쌀 것.
+4. **테스트 산출물 정리 여부 묻기** — `out/우리_가게가_받을_수_있는_정부_지원금_찾기`.
 5. **■중지 버튼 브라우저 실물 확인** — API 로만 검증했다. 입구에서 단발·배치 각각 눌러보기.
-6. **`verify.py` 실물 검증** — 만들어만 놓고 한 번도 안 돌렸다. 입구에서 `🔎 수치 근거 대조`
-   토글 켜고 한 편 뽑아, ①근거 없는 수치를 실제로 잡는지 ②생성이 몇 초 더 걸리는지 잰다.
-7. **PEXELS_API_KEY 연결**(무료 1분) — Openverse 는 주제 안 맞거나 960px 이라 흐리다.
-8. **모델 재선정 확인** — `llm.py` PREFERRED 맨 앞이 `huihui_ai/qwen3-abliterated:14b-v2`.
-   카피 품질이 qwen2.5:14b 보다 나은지 같은 주제로 대조. (가끔 `{}` 빈 응답 → 재시도로 막아둠)
+6. **`verify.py` 실물 검증** — 한 번도 안 돌렸다. `🔎 수치 근거 대조` 켜고 한 편 → 잡는지·몇 초 더 드는지.
+7. **PEXELS_API_KEY 연결**(무료 1분) — Openverse cc0 풀은 추상·IT 주제에 약하다.
+8. **모델 재선정 확인** — `llm.py` PREFERRED 맨 앞 `huihui_ai/qwen3-abliterated:14b-v2` vs qwen2.5:14b 카피 대조.
 
 ## ⚡ 즉시 실행
 **바탕화면 `ContentForge` 바로가기** → 런처 창(`launcher.pyw`)에서 켜기/끄기. 켜지면 브라우저 자동으로 열림.
@@ -47,13 +43,15 @@ $env:PYTHONUTF8=1; python app.py    # → http://127.0.0.1:8770
 | `run.py` | CLI 엔트리. 주제 → 기획 → 렌더 한 방 |
 | `app.py` | 로컬 서버(ThreadingHTTPServer). `/api/generate`(백그라운드 워커)·`/api/job`·`/api/projects`·`/api/project`·`/out/*` 정적 |
 | `generate.py` | 주제 → 슬라이드 JSON. **후킹 프롬프트**(숫자/손해회피/반전 강제) + 슬라이드별 `image_query`(영문 검색어) |
-| `images.py` | 배경사진 조달. `PEXELS_API_KEY` 있으면 실사검색 / 없으면 picsum 폴백. out/<slug>/img/ 다운로드 |
+| `images.py` | 배경사진 조달. 자동(`fetch_one`) + **후보 고르기**(`search_candidates_ex`: Openverse cc0·pdm, 익명 page_size≤20, 검색어 좁혀 재시도) + `fetch_chosen` + `save_uploaded`(내 사진→JPEG) |
 | `render.py` | 슬라이드 → 1080×1350 카드 HTML → Chrome 헤드리스 PNG. cover/cta=풀배경+오버레이, point=상단 이미지밴드+밝은 패널 |
 | `verify.py` | **근거 대조 게이트**(2026-09-03). 슬라이드의 %·금액·날짜를 뽑아 Bing 검색 결과 원문과 대조 → 어디에도 없으면 그 장을 숫자 없이 재생성. 검색엔진 함정은 이 파일 docstring 이 원본 |
 | `launcher.pyw` | 서버 켜기/끄기 창(tkinter). 끄기는 8770 포트 주인을 자식(Chrome)까지 taskkill → 터미널에서 켠 서버도 끔 |
 | `cancel.py` | 생성 중지 신호. 워커가 Event 를 bind, LLM 스트림 조각·근거 검색·카드 1장마다 check(). `Cancelled`는 BaseException(재생성 `except Exception` 에 삼켜지지 않게) |
 | `index.html` | 입구. 주제입력 + 진행률 폴링 + ■중지 버튼(단발·배치, `/api/cancel`) + "내 작업" 갤러리 |
-| `reader.html` | 리더기. `?slug=` 캐러셀(←→/키보드/점), 개별·전체 저장 |
+| `reader.html` | 리더기·편집기. `?slug=` 캐러셀, 카피수정·재생성, **🖼️ 사진 고르기 창**(`/api/photo_candidates`·`/api/pick_photo`·`/api/upload_photo`) |
+| `themes.py` | 테마 CSS 변수 세트. `photo`(사진 쓰나)·`full_bleed`(cinema: 사진 전체+아래 그라데이션+흰 글씨) |
+| `generate.py` 사실 | `facts` 가 있으면 `_facts_block` 을 프롬프트에 넣고, `_facts_fix` 가 사실에 없는 숫자 쓴 장을 재생성. slides.json 에 `facts` 저장 |
 | `out/<slug>/` | 산출물: card_NN.png, card_NN.html, img/, slides.json |
 
 ## ⚠️ 하드런 함정 (이미 잡은 것)
@@ -92,6 +90,7 @@ $env:PYTHONUTF8=1; python app.py    # → http://127.0.0.1:8770
 5. 카드 템플릿 다양화(현재 1테마) + 폰트/색 브랜드 프리셋.
 
 ## 기록
+- `logs/2026-09-17-log.md` — 지원금 앱 덱 리메이크, cinema 테마, 사진 고르기·내 사진 올리기, 제품 사실 칸, 사실 밖 숫자 게이트
 - `logs/2026-09-11-log.md` — 생성 중지 버튼, 서버 런처, 팀 모집 카드뉴스 제작 중 렌더러 가독성 수정, qwen3 `{}` 재시도
 - `logs/2026-09-04-log.md` — 근거 대조 게이트 커밋(9/3 작업분), 잔디 소급
 - `logs/2026-06-10-log.md` — 초기 파이프라인 E2E (HANDOFF 에서 옮김)
