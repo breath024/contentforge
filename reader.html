@@ -54,6 +54,28 @@
     display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
   .nav{transition:transform .12s,border-color .15s,background .15s;}
   .nav:active{transform:scale(.92);}
+  /* 사진 고르기 — 자동으로 한 장 찍어오는 대신 CC0 후보를 보고 고른다 */
+  .pickwrap{position:fixed;inset:0;background:rgba(5,8,18,.82);backdrop-filter:blur(3px);
+    display:none;z-index:50;padding:24px;overflow:auto;}
+  .pickwrap.on{display:block;}
+  .pick{max-width:1040px;margin:0 auto;background:#111a2e;border:1px solid #1e293b;
+    border-radius:18px;padding:20px 22px 24px;}
+  .pick h3{font-size:17px;margin-bottom:4px;}
+  .pick .hint{font-size:12.5px;color:#94a3b8;line-height:1.6;margin-bottom:14px;}
+  .pick .qrow{display:flex;gap:8px;margin-bottom:14px;}
+  .pick .qrow input{flex:1;background:#0b1020;border:1px solid #283549;border-radius:10px;
+    color:#e8eefc;padding:11px 13px;font-size:14px;}
+  .pgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+  .pcell{border:2px solid transparent;border-radius:12px;overflow:hidden;cursor:pointer;
+    background:#0b1020;position:relative;transition:border-color .15s,transform .12s;}
+  .pcell:hover{border-color:#38bdf8;transform:translateY(-2px);}
+  .pcell img{width:100%;height:150px;object-fit:cover;display:block;}
+  .pcell .meta{padding:7px 9px;font-size:11px;color:#94a3b8;line-height:1.35;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pcell .lic{position:absolute;top:7px;left:7px;background:rgba(5,8,18,.78);color:#a5f3fc;
+    font-size:10px;font-weight:800;letter-spacing:1px;padding:3px 7px;border-radius:6px;}
+  .pempty{color:#94a3b8;font-size:13.5px;padding:26px 4px;}
+  @media (max-width:760px){ .pgrid{grid-template-columns:repeat(2,1fr);} }
   .btn{transition:transform .12s,border-color .15s;}
   .btn:active{transform:scale(.97);}
   @media(max-width:760px){
@@ -93,9 +115,24 @@
       <div class="acts">
         <button class="btn pri" id="bSave">💾 적용</button>
         <button class="btn" id="bRegen" title="AI가 이 장 카피를 새로">🔄 카피 다시</button>
-        <button class="btn" id="bImg" title="배경 사진 교체">🖼️ 사진</button>
+        <button class="btn" id="bImg" title="퍼블릭 도메인 후보에서 고르기">🖼️ 사진 고르기</button>
       </div>
       <div class="status" id="status"></div>
+    </div>
+  </div>
+
+  <div class="pickwrap" id="pickwrap">
+    <div class="pick">
+      <h3>배경 사진 고르기</h3>
+      <div class="hint">퍼블릭 도메인(CC0/PDM)만 보여줘요 — 출처 표기 없이 상업적으로 쓸 수 있고,
+        고르면 출처가 <b>사진_출처.txt</b> 에 기록돼요. 검색어를 바꿔서 다시 찾아도 돼요.</div>
+      <div class="qrow">
+        <input id="pQuery" placeholder="영문 검색어 (예: cafe counter)">
+        <button class="btn" id="pSearch">다시 찾기</button>
+        <button class="btn" id="pClose">닫기</button>
+      </div>
+      <div class="pgrid" id="pGrid"></div>
+      <div class="pempty" id="pEmpty" style="display:none;"></div>
     </div>
   </div>
 
@@ -168,8 +205,49 @@ async function act(path, body, msg){
 $('#bSave').onclick  = ()=> act('/api/update_card',
   {headline: $('#eHead').value, body: $('#eBody').value}, '적용 중...');
 $('#bRegen').onclick = ()=> act('/api/regen_card', {}, 'AI가 카피 새로 쓰는 중...');
-$('#bImg').onclick   = ()=>{ rerolls[i]=(rerolls[i]||0)+1;
-  act('/api/reroll_image', {variant: rerolls[i]}, '사진 바꾸는 중...'); };
+$('#bImg').onclick   = ()=>{ $('#pickwrap').classList.add('on'); loadCandidates(''); };
+
+// ── 사진 고르기 ───────────────────────────────────────────────────────────────
+// 예전엔 버튼을 누를 때마다 자동으로 다른 한 장을 받아왔다(운에 맡김).
+// 지금은 CC0/PDM 후보를 그리드로 띄우고 고른다 — 남에게 넘길 결과물이라 라이선스가 중요하다.
+async function loadCandidates(q){
+  const grid = $('#pGrid'), empty = $('#pEmpty');
+  grid.innerHTML = ''; empty.style.display='none';
+  empty.textContent = '찾는 중...'; empty.style.display='block';
+  const url = `/api/photo_candidates?slug=${encodeURIComponent(slug)}&index=${i+1}`
+            + (q ? `&q=${encodeURIComponent(q)}` : '');
+  try{
+    const j = await (await fetch(url)).json();
+    if(j.error){ empty.textContent = '⚠️ ' + j.error; return; }
+    $('#pQuery').value = j.query || '';
+    const cs = j.candidates || [];
+    if(!cs.length){
+      empty.textContent = '이 검색어로는 퍼블릭 도메인 사진을 못 찾았어요. 다른 말로 찾아보세요.';
+      return;
+    }
+    empty.style.display='none';
+    grid.innerHTML = cs.map((c,k)=>`
+      <div class="pcell" data-k="${k}" title="${(c.title||'').replace(/"/g,'')}">
+        <span class="lic">${c.license}</span>
+        <img src="${c.thumb||c.url}" loading="lazy" alt="">
+        <div class="meta">${c.w}×${c.h} · ${c.creator||''}</div>
+      </div>`).join('');
+    grid.querySelectorAll('.pcell').forEach(el=>{
+      el.onclick = ()=>{
+        const c = cs[+el.dataset.k];
+        $('#pickwrap').classList.remove('on');
+        act('/api/pick_photo', {url:c.url, title:c.title, creator:c.creator,
+                                license:c.license, landing:c.landing}, '고른 사진 깔아보는 중...');
+      };
+    });
+  }catch(e){ empty.textContent = '⚠️ ' + e; empty.style.display='block'; }
+}
+
+$('#pSearch').onclick = ()=> loadCandidates($('#pQuery').value.trim());
+$('#pClose').onclick  = ()=> $('#pickwrap').classList.remove('on');
+$('#pickwrap').onclick = e =>{ if(e.target.id==='pickwrap') $('#pickwrap').classList.remove('on'); };
+$('#pQuery').addEventListener('keydown', e=>{ if(e.key==='Enter') $('#pSearch').click(); });
+
 
 $('#prev').onclick = ()=>{ i--; show(); };
 $('#next').onclick = ()=>{ i++; show(); };

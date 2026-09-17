@@ -10,6 +10,8 @@
   POST /api/cancel       {id} → 돌고 있는 job/batch 중지
   GET  /api/projects     생성된 카드뉴스 목록(최근순)
   GET  /api/project?slug= 슬라이드 + 카드 PNG 경로
+  GET  /api/photo_candidates?slug=&index=&q=  CC0/PDM 배경사진 후보(고르기용)
+  POST /api/pick_photo   {slug,index,url,...} 고른 사진 적용 + 출처 기록
   GET  /out/...          생성물 정적 서빙
 ThreadingHTTPServer + 백그라운드 워커 패턴.
 """
@@ -32,7 +34,7 @@ for _s in (sys.stdout, sys.stderr):
 
 from generate import make_cards, regen_slide
 from render import render, render_card, img_path_for
-from images import fetch_one
+from images import fetch_one, search_candidates, fetch_chosen
 from llm import pick_model
 import cancel
 import research
@@ -180,6 +182,24 @@ def _load_cards(slug: str):
     return d, json.loads(sj.read_text(encoding="utf-8"))
 
 
+def _write_credits(d: Path, cards: dict):
+    """고른 사진의 출처를 폴더에 남긴다. CC0/PDM 은 표기 의무가 없지만,
+    남에게 넘길 때 '어디서 왔는지'를 못 대면 쓰기 곤란해진다(2026-09-11)."""
+    rows = []
+    for i, s in enumerate(cards.get("slides", []), 1):
+        c = s.get("image_credit")
+        if not c:
+            continue
+        rows.append(f"card_{i:02d}: {c.get('title','')} / {c.get('creator','')} / "
+                    f"{c.get('license','')} / {c.get('landing','')}")
+    if not rows:
+        return
+    (d / "사진_출처.txt").write_text(
+        "배경 사진 출처 — Openverse(api.openverse.org) 에서 CC0/PDM 만 골랐다." + chr(10)
+        + "퍼블릭 도메인이라 출처 표기 의무는 없고 상업적 사용도 된다." + chr(10) * 2
+        + chr(10).join(rows) + chr(10), encoding="utf-8")
+
+
 def _rerender_one(d: Path, cards: dict, index: int, img: Path | None):
     """slides.json 저장 + 카드 1장 재렌더. 캐시 회피용 ?t 쿼리 포함 url 반환."""
     slides = cards["slides"]
@@ -249,6 +269,24 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"error": str(e)}, 500)
         if u.path == "/api/storage":
             return self._json(storage.usage())
+        if u.path == "/api/photo_candidates":
+            # 자동으로 한 장 찍어오는 대신, CC0/PDM 후보를 그리드로 보여주고 사람이 고른다
+            slug = (q.get("slug") or [""])[0]
+            d, cards = _load_cards(slug)
+            if not cards:
+                return self._json({"error": "프로젝트 없음"}, 404)
+            idx = int((q.get("index") or ["1"])[0])
+            slides = cards["slides"]
+            if not (1 <= idx <= len(slides)):
+                return self._json({"error": "잘못된 카드 번호"}, 400)
+            slide = slides[idx - 1]
+            query = (q.get("q") or [""])[0].strip() or slide.get("image_query") or cards.get("topic", "")
+            # 풀블리드로 깔리는 장(표지·CTA, 그리고 full_bleed 테마의 본문)은 세로 사진이 낫다
+            th = cards.get("theme")
+            tall = slide.get("role") in ("cover", "cta") or themes.full_bleed(th)
+            return self._json({"query": query, "tall": tall,
+                               "candidates": search_candidates(query, want_tall=tall, limit=12)})
+
         if u.path == "/api/themes":
             return self._json({"themes": themes.options(), "default": themes.DEFAULT})
         if u.path == "/api/tones":
@@ -371,7 +409,8 @@ class Handler(SimpleHTTPRequestHandler):
                              daemon=True).start()
             return self._json({"batch_id": bid, "total": len(topics)})
 
-        if u.path in ("/api/update_card", "/api/regen_card", "/api/reroll_image"):
+        if u.path in ("/api/update_card", "/api/regen_card", "/api/reroll_image",
+                      "/api/pick_photo"):
             length = int(self.headers.get("Content-Length", 0))
             raw = self.rfile.read(length).decode("utf-8", "replace").strip()
             p = json.loads(raw) if raw else {}
@@ -400,11 +439,25 @@ class Handler(SimpleHTTPRequestHandler):
                                  body=fresh.get("body", slide.get("body")),
                                  image_query=fresh.get("image_query", slide.get("image_query")))
                     img = img_path_for(d, idx)
+                elif u.path == "/api/pick_photo":
+                    # 사용자가 그리드에서 고른 후보를 받아 그 장에만 깐다
+                    url_pick = (p.get("url") or "").strip()
+                    if not url_pick:
+                        return self._json({"error": "고른 사진이 없어요"}, 400)
+                    img = fetch_chosen(url_pick, d, idx)
+                    if not img:
+                        return self._json({"error": "사진을 받지 못했어요. 다른 걸 골라보세요"}, 502)
+                    slide["image_credit"] = {
+                        "title": p.get("title", ""), "creator": p.get("creator", ""),
+                        "license": p.get("license", ""), "landing": p.get("landing", ""),
+                        "url": url_pick,
+                    }
                 else:  # reroll_image
                     variant = int(p.get("variant", 1))
                     img = fetch_one(slide.get("image_query", cards.get("topic", "")),
                                     d, idx, variant=variant) or img_path_for(d, idx)
                 url, png = _rerender_one(d, cards, idx, img)
+                _write_credits(d, cards)
                 if not png:
                     return self._json({"error": "렌더 실패"}, 500)
                 return self._json({"ok": True, "index": idx, "url": url, "slide": slide})

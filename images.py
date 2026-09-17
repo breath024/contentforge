@@ -119,6 +119,69 @@ def _download(url: str, dest: Path) -> bool:
         return False
 
 
+# ── 후보 고르기 ────────────────────────────────────────────────────────────────
+# 자동 조달은 한 장을 찍어 오지만, 남에게 내보낼 결과물은 사람이 보고 골라야 한다.
+# 여기서는 CC0/PDM(출처 표기 의무 없음)만 긁어 후보로 돌려준다.
+#
+# ⚠️ Openverse 익명 요청은 page_size 20 이 상한이다. 21 이상을 넘기면 검색어·필터와
+#    무관하게 401 Unauthorized 가 떨어진다(2026-09-17 실측). 키 없이 쓰는 한 여기를 넘기지 말 것.
+OPENVERSE_MAX_PAGE = 20
+CC0_LICENSES = "cc0,pdm"
+
+
+def search_candidates(query: str, want_tall: bool = False, limit: int = 12) -> list[dict]:
+    """CC0/PDM 사진 후보 목록. 풀블리드(표지·CTA)엔 세로 사진을 앞세운다.
+
+    한 페이지(20건)만 긁으면 해상도 하한에 걸려 후보가 한두 장만 남는 검색어가 많다
+    (2026-09-17 'coffee shop' → 1장). 원하는 수가 찰 때까지 다음 페이지를 더 본다.
+    """
+    query = (query or "").strip() or "minimal background"
+    out: list[dict] = []
+    seen: set[str] = set()
+    for page in range(1, 4):
+        u = ("https://api.openverse.org/v1/images/?" + urllib.parse.urlencode(
+            {"q": query, "page_size": OPENVERSE_MAX_PAGE, "page": page,
+             "license": CC0_LICENSES, "mature": "false"}))
+        try:
+            req = urllib.request.Request(
+                u, headers={"User-Agent": "ContentForge/1.0 (cardnews)"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                results = json.loads(r.read().decode("utf-8")).get("results", [])
+        except Exception:
+            break
+        if not results:
+            break
+        for c in results:
+            w, h = c.get("width") or 0, c.get("height") or 0
+            url = c.get("url")
+            if not url or url in seen:
+                continue
+            if min(w, h) < 800:          # 960px 짜리를 풀블리드로 깔면 흐리다
+                continue
+            seen.add(url)
+            out.append({
+                "url": url, "thumb": c.get("thumbnail"),
+                "title": c.get("title") or "(제목없음)",
+                "creator": c.get("creator") or "(작자미상)",
+                "license": (c.get("license") or "").upper(),
+                "landing": c.get("foreign_landing_url") or url,
+                "w": w, "h": h,
+            })
+        if len(out) >= limit * 2:
+            break
+    # 원하는 방향(세로/가로)을 먼저, 그 다음 해상도 큰 순
+    out.sort(key=lambda c: ((c["h"] >= c["w"]) == want_tall, min(c["w"], c["h"])), reverse=True)
+    return out[:limit]
+
+
+def fetch_chosen(url: str, out_dir, i: int) -> Path | None:
+    """고른 후보 1장을 카드 배경으로 받는다."""
+    img_dir = Path(out_dir) / "img"
+    img_dir.mkdir(parents=True, exist_ok=True)
+    dest = img_dir / f"img_{i:02d}.jpg"
+    return dest if _download(url, dest) else None
+
+
 def fetch_images(slides: list[dict], out_dir: Path) -> dict[int, Path]:
     """슬라이드별 배경 이미지를 받아 out_dir/img_NN.jpg 로 저장. {index: path}."""
     out_dir = Path(out_dir)
