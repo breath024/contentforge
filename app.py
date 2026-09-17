@@ -5,13 +5,14 @@
 라우트:
   GET  /                 입구(index.html)
   GET  /reader.html      리더기(카드뉴스 캐러셀 뷰어)
-  POST /api/generate     {topic,n,brand} → job_id (백그라운드 생성)
+  POST /api/generate     {topic,n,brand,facts} → job_id (백그라운드 생성)
   GET  /api/job?id=      진행상태
   POST /api/cancel       {id} → 돌고 있는 job/batch 중지
   GET  /api/projects     생성된 카드뉴스 목록(최근순)
   GET  /api/project?slug= 슬라이드 + 카드 PNG 경로
   GET  /api/photo_candidates?slug=&index=&q=  CC0/PDM 배경사진 후보(고르기용)
   POST /api/pick_photo   {slug,index,url,...} 고른 사진 적용 + 출처 기록
+  POST /api/upload_photo {slug,index,data(base64)} 내 사진을 그 장 배경으로
   GET  /out/...          생성물 정적 서빙
 ThreadingHTTPServer + 백그라운드 워커 패턴.
 """
@@ -34,7 +35,7 @@ for _s in (sys.stdout, sys.stderr):
 
 from generate import make_cards, regen_slide
 from render import render, render_card, img_path_for
-from images import fetch_one, search_candidates_ex, fetch_chosen
+from images import fetch_one, search_candidates_ex, fetch_chosen, save_uploaded
 from llm import pick_model
 import cancel
 import research
@@ -63,7 +64,7 @@ def _drop_if_new(out_dir: Path, was_there: bool):
 def _worker(job_id: str, topic: str, n: int, brand: str, model: str | None,
             use_research: bool = False, theme: str | None = None,
             tone: str | None = None, tone_preset: str | None = None,
-            verify_claims: bool = False):
+            verify_claims: bool = False, facts: str | None = None):
     job = JOBS[job_id]
     cancel.bind(CANCELS[job_id])
     slug = _slugify(topic)
@@ -89,7 +90,7 @@ def _worker(job_id: str, topic: str, n: int, brand: str, model: str | None,
                            message=f"근거 없는 수치({bad}) → {a[0] + 1}번 카드 다시 씀")
 
         cards = make_cards(topic, n=n, model=model, references=references,
-                           tone=tone, tone_preset=tone_preset,
+                           tone=tone, tone_preset=tone_preset, facts=facts,
                            verify_claims=verify_claims, on_verify=on_verify)
         cards["brand"] = brand  # 재렌더(편집) 때 다시 쓰려고 저장
         if references:
@@ -131,6 +132,7 @@ def _batch_worker(bid: str, persona: dict, topics: list[str], n: int,
     theme = persona.get("theme") or themes.DEFAULT
     tone = persona.get("tone")
     tone_preset = persona.get("tone_preset")
+    facts = persona.get("facts")          # 페르소나에 제품 사실을 걸어두면 배치 전체가 쓴다
     used_covers: list[str] = []  # 배치 내 표지 누적 → 서로 안 겹치게
     for item in b["items"]:
         if ev.is_set():
@@ -146,7 +148,7 @@ def _batch_worker(bid: str, persona: dict, topics: list[str], n: int,
             if use_research:
                 refs = research.reference_titles(research.collect(topic, n=10), k=8)
             cards = make_cards(topic, n=n, model=model, references=refs, tone=tone,
-                               tone_preset=tone_preset, avoid=used_covers)
+                               tone_preset=tone_preset, avoid=used_covers, facts=facts)
             cov = (cards["slides"][0].get("headline") or "").strip()
             if cov:
                 used_covers.append(cov)
@@ -348,6 +350,8 @@ class Handler(SimpleHTTPRequestHandler):
             theme = payload.get("theme") or themes.DEFAULT
             tone_preset = payload.get("tone_preset")
             verify_claims = bool(payload.get("verify_claims", False))
+            # 모델은 제품을 모른다 → 사용자가 주는 사실을 프롬프트 독립 블록으로 넘긴다
+            facts = (payload.get("facts") or "").strip()[:2000]
             _seq["n"] += 1
             jid = f"job{_seq['n']}"
             JOBS[jid] = {"status": "running", "stage": "대기", "message": "시작",
@@ -355,7 +359,7 @@ class Handler(SimpleHTTPRequestHandler):
             CANCELS[jid] = threading.Event()
             threading.Thread(target=_worker,
                              args=(jid, topic, n, brand, model, use_research, theme,
-                                   None, tone_preset, verify_claims),
+                                   None, tone_preset, verify_claims, facts),
                              daemon=True).start()
             return self._json({"job_id": jid, "model": model})
 
@@ -384,7 +388,7 @@ class Handler(SimpleHTTPRequestHandler):
                     name=p.get("name", ""), niche=p.get("niche", ""),
                     target=p.get("target", ""), tone=p.get("tone", ""),
                     brand=p.get("brand", ""), theme=p.get("theme", ""),
-                    tone_preset=p.get("tone_preset", ""))
+                    tone_preset=p.get("tone_preset", ""), facts=p.get("facts", ""))
                 return self._json({"ok": True, "persona": persona})
             if u.path == "/api/persona_delete":
                 return self._json({"ok": personas.delete(p.get("id", ""))})
@@ -412,7 +416,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"batch_id": bid, "total": len(topics)})
 
         if u.path in ("/api/update_card", "/api/regen_card", "/api/reroll_image",
-                      "/api/pick_photo"):
+                      "/api/pick_photo", "/api/upload_photo"):
             length = int(self.headers.get("Content-Length", 0))
             raw = self.rfile.read(length).decode("utf-8", "replace").strip()
             p = json.loads(raw) if raw else {}
@@ -436,11 +440,26 @@ class Handler(SimpleHTTPRequestHandler):
                 elif u.path == "/api/regen_card":
                     used = [s.get("headline", "") for j, s in enumerate(slides) if j != idx - 1]
                     fresh = regen_slide(cards.get("topic", slug), slide.get("role", "point"),
-                                        used, model=pick_model())
+                                        used, model=pick_model(), facts=cards.get("facts"))
                     slide.update(headline=fresh.get("headline", slide.get("headline")),
                                  body=fresh.get("body", slide.get("body")),
                                  image_query=fresh.get("image_query", slide.get("image_query")))
                     img = img_path_for(d, idx)
+                elif u.path == "/api/upload_photo":
+                    # 스톡에 없는 것(내 매장·내 제품 화면)은 본인 사진이 낫다
+                    import base64
+                    raw_b64 = (p.get("data") or "").split(",")[-1]
+                    try:
+                        blob = base64.b64decode(raw_b64)
+                    except Exception:
+                        blob = b""
+                    img = save_uploaded(blob, d, idx)
+                    if not img:
+                        return self._json({"error": "이미지를 읽지 못했어요 (jpg/png/webp)"}, 400)
+                    slide["image_credit"] = {
+                        "title": p.get("name") or "(올린 사진)", "creator": "직접 올림",
+                        "license": "OWN", "landing": "", "url": "",
+                    }
                 elif u.path == "/api/pick_photo":
                     # 사용자가 그리드에서 고른 후보를 받아 그 장에만 깐다
                     url_pick = (p.get("url") or "").strip()

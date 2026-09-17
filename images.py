@@ -244,3 +244,36 @@ if __name__ == "__main__":
     test = [{"image_query": q}]
     print("KEY:", "있음" if PEXELS_KEY else "없음(picsum 폴백)")
     print(fetch_images(test, Path("out/_imgtest")))
+
+
+def save_uploaded(data: bytes, out_dir, i: int) -> Path | None:
+    """사용자가 올린 사진을 카드 배경으로 저장한다.
+
+    스톡에 없는 것(내 매장·내 제품 화면)은 본인 사진이 제일 낫다.
+    렌더러는 img_NN.jpg 를 file:// 로 읽으므로 JPEG 로 눕혀 둔다.
+    """
+    if not data or len(data) < 1000:
+        return None
+    img_dir = Path(out_dir) / "img"
+    img_dir.mkdir(parents=True, exist_ok=True)
+    dest = img_dir / f"img_{i:02d}.jpg"
+    try:
+        from PIL import Image
+        import io as _io
+        im = Image.open(_io.BytesIO(data))
+        im.load()
+        if im.mode not in ("RGB", "L"):
+            im = im.convert("RGB")
+        # 너무 큰 원본은 카드(1080x1350)보다 훨씬 커도 의미가 없다 → 긴 변 2600 으로
+        if max(im.size) > 2600:
+            im.thumbnail((2600, 2600), Image.LANCZOS)
+        im.convert("RGB").save(dest, "JPEG", quality=92)
+        return dest
+    except Exception:
+        # Pillow 가 없거나 못 여는 포맷 → 헤더만 확인하고 그대로 둔다(Chrome 이 읽는다)
+        sig_jpeg = bytes([0xFF, 0xD8, 0xFF])
+        sig_png = bytes([0x89, 0x50, 0x4E, 0x47])
+        if data[:3] == sig_jpeg or data[:4] == sig_png or data[:4] == b"RIFF":
+            dest.write_bytes(data)
+            return dest
+        return None

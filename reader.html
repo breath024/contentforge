@@ -124,12 +124,15 @@
   <div class="pickwrap" id="pickwrap">
     <div class="pick">
       <h3>배경 사진 고르기</h3>
-      <div class="hint">퍼블릭 도메인(CC0/PDM)만 보여줘요 — 출처 표기 없이 상업적으로 쓸 수 있고,
+      <div class="hint">스톡에 없는 것(내 매장·제품 화면)은 <b>📁 내 사진</b>으로 올리는 게 나아요.
+        검색 결과는 퍼블릭 도메인(CC0/PDM)만 보여줘요 — 출처 표기 없이 상업적으로 쓸 수 있고,
         고르면 출처가 <b>사진_출처.txt</b> 에 기록돼요. 검색어를 바꿔서 다시 찾아도 돼요.</div>
       <div class="qrow">
         <input id="pQuery" placeholder="영문 검색어 (예: cafe counter)">
         <button class="btn" id="pSearch">다시 찾기</button>
+        <button class="btn" id="pUpload" title="내 컴퓨터 사진을 이 장 배경으로">📁 내 사진</button>
         <button class="btn" id="pClose">닫기</button>
+        <input type="file" id="pFile" accept="image/*" style="display:none;">
       </div>
       <div class="pgrid" id="pGrid"></div>
       <div class="pempty" id="pEmpty" style="display:none;"></div>
@@ -242,6 +245,21 @@ async function loadCandidates(q){
     });
   }catch(e){ empty.textContent = '⚠️ ' + e; empty.style.display='block'; }
 }
+
+// 내 사진 올리기 — 스톡에 마땅한 게 없을 때(주제가 특수하거나 내 제품 화면일 때)
+$('#pUpload').onclick = ()=> $('#pFile').click();
+$('#pFile').onchange = e =>{
+  const f = e.target.files && e.target.files[0];
+  if(!f) return;
+  if(f.size > 24*1024*1024){ $('#status').textContent = '⚠️ 24MB 넘는 파일은 안 돼요'; return; }
+  const r = new FileReader();
+  r.onload = ()=>{
+    $('#pickwrap').classList.remove('on');
+    act('/api/upload_photo', {data: r.result, name: f.name}, '올린 사진 깔아보는 중...');
+  };
+  r.readAsDataURL(f);
+  e.target.value = '';
+};
 
 $('#pSearch').onclick = ()=> loadCandidates($('#pQuery').value.trim());
 $('#pClose').onclick  = ()=> $('#pickwrap').classList.remove('on');
