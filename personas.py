@@ -35,7 +35,8 @@ def get(pid: str) -> dict | None:
 
 
 def create(name: str, niche: str, target: str = "", tone: str = "",
-           brand: str = "", theme: str = "", tone_preset: str = "") -> dict:
+           brand: str = "", theme: str = "", tone_preset: str = "",
+           facts: str = "") -> dict:
     p = {
         "id": "p_" + uuid.uuid4().hex[:8],
         "name": name.strip() or "이름없는 채널",
@@ -45,6 +46,8 @@ def create(name: str, niche: str, target: str = "", tone: str = "",
         "brand": brand.strip() or "@my.page",
         "theme": theme if theme in themes.THEMES else themes.DEFAULT,
         "tone_preset": tone_preset if tone_preset in tones.TONES else tones.DEFAULT,
+        # 이 채널이 파는 것의 사실(제품 설명·혜택·금지어). 배치 생성이 통째로 이걸 본다
+        "facts": (facts or "").strip()[:2000],
     }
     items = load_all()
     items.append(p)
@@ -56,7 +59,8 @@ def update(pid: str, **fields) -> dict | None:
     items = load_all()
     for p in items:
         if p.get("id") == pid:
-            for k in ("name", "niche", "target", "tone", "brand", "theme", "tone_preset"):
+            for k in ("name", "niche", "target", "tone", "brand", "theme",
+                      "tone_preset", "facts"):
                 if k in fields and fields[k] is not None:
                     p[k] = fields[k]
             _save_all(items)

@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 import json
+import re
 from llm import generate_json, pick_model
 import tones
 import quality
@@ -15,7 +16,7 @@ PROMPT_TMPL = """당신은 인스타에서 수십만 저장을 받는 카드뉴�
 주제: "{topic}"
 타겟/말투: {tone}
 콘텐츠 톤: {tone_guide}
-{benchmark}{avoid}
+{facts}{benchmark}{avoid}
 이 주제로 '스크롤을 멈추고 저장하게 만드는' 카드뉴스 {n}장을 기획하라.
 
 [규칙]
@@ -32,6 +33,22 @@ PROMPT_TMPL = """당신은 인스타에서 수십만 저장을 받는 카드뉴�
   {{"role": "point", "headline": "소제목", "body": "한 문장", "image_query": "english keywords"}},
   {{"role": "cta", "headline": "마무리", "body": "행동 유도 한 줄", "image_query": "english keywords"}}
 ]}}"""
+
+
+def _facts_block(facts: str | None) -> str:
+    """사용자가 준 제품 사실. 모델은 제품을 모르니 이걸 안 주면 지어낸다(2026-09-11).
+
+    tone 칸에 욱여넣어도 대개 무시됐다 → 프롬프트의 독립 블록으로 올리고,
+    '여기 없는 수치는 쓰지 마라'를 같이 못 박는다.
+    """
+    facts = (facts or "").strip()
+    if not facts:
+        return ""
+    nl = chr(10)
+    return (nl + "[제품 사실 — 여기 적힌 것만 사실로 쓸 것]" + nl + facts + nl
+            + "[중요] 위에 없는 수치(퍼센트·금액·기간·인원·날짜·순위)는 절대 지어내지 마라. "
+            "모르면 수치 없이 장면과 행동으로 써라. 설명 문장을 그대로 옮겨 적지 말고 "
+            "사장님/사용자가 겪는 말로 바꿔 써라." + nl)
 
 
 def _benchmark_block(references: list[str] | None) -> str:
@@ -65,14 +82,15 @@ def make_cards(
     references: list[str] | None = None,
     tone_preset: str | None = None,
     avoid: list[str] | None = None,
+    facts: str | None = None,
     self_fix: bool = True,
     verify_claims: bool = False,
     on_verify=None,
 ) -> dict:
     prompt = PROMPT_TMPL.format(
         topic=topic, tone=tone or DEFAULT_TONE, tone_guide=tones.guide(tone_preset),
-        n=n, last=n - 1, benchmark=_benchmark_block(references),
-        avoid=_avoid_block(avoid))
+        n=n, last=n - 1, facts=_facts_block(facts),
+        benchmark=_benchmark_block(references), avoid=_avoid_block(avoid))
     # qwen3 가 가끔 생성 없이 곧바로 "{}" 를 낸다(2026-09-11 실측, 0.4초 만에 빈 응답).
     # 다시 물으면 대개 제대로 나온다 → 빈 응답이면 두 번까지 재시도.
     for _ in range(3):
@@ -91,8 +109,12 @@ def make_cards(
         s.setdefault("image_query", topic)
     data["slides"] = slides
     data.setdefault("topic", topic)
+    if facts:
+        data["facts"] = facts          # 편집기의 '카피 다시'도 같은 사실을 보게 저장
     if self_fix:
-        _self_fix(data, topic, model)
+        _self_fix(data, topic, model, facts=facts)
+    if facts:
+        _facts_fix(data, topic, model, facts)
     if verify_claims:
         _verify_fix(data, topic, model, on_verify=on_verify)
     return data
@@ -159,7 +181,49 @@ def _verify_fix(cards: dict, topic: str, model: str | None, rounds: int = 2,
     return cards
 
 
-def _self_fix(cards: dict, topic: str, model: str | None, rounds: int = 2) -> dict:
+_NUM_RE = re.compile(r"\d[\d,.]*")
+
+
+def _stray_numbers(text: str, facts: str) -> list[str]:
+    """사실 목록에 없는 숫자. '3단계'·'2장' 같은 구조 표현은 뺀다."""
+    allowed = {n.replace(",", "") for n in _NUM_RE.findall(facts or "")}
+    out = []
+    for m in _NUM_RE.finditer(text or ""):
+        if verify._SAFE_CONTEXT.match(text[m.start():m.end() + 4]):
+            continue
+        n = m.group(0).rstrip(".,").replace(",", "")
+        if n and n not in allowed and n not in out:
+            out.append(n)
+    return out
+
+
+def _facts_fix(cards: dict, topic: str, model: str | None, facts: str,
+               tries: int = 3) -> dict:
+    """사실을 줬는데 그 안에 없는 숫자('지원금 놓친 가게 300만 개')를 쓴 장을 다시 쓴다.
+
+    find_claims는 %·원·명 같은 단위만 봐서 '300만 개'를 놓쳤다 → 사실 대조는 숫자 전체로 한다.
+    """
+    slides = cards["slides"]
+    used = [(s.get("headline") or "").strip() for s in slides]
+    for s in slides:
+        for _ in range(tries):
+            if not _stray_numbers(f"{s.get('headline') or ''} {s.get('body') or ''}", facts):
+                break
+            try:
+                fresh = regen_slide(topic, s.get("role", "point"), used, model=model,
+                                    no_numbers=True, facts=facts)
+            except Exception:
+                break
+            s["headline"] = fresh.get("headline", s.get("headline"))
+            s["body"] = fresh.get("body", s.get("body"))
+            if fresh.get("image_query"):
+                s["image_query"] = fresh["image_query"]
+            used.append((fresh.get("headline") or "").strip())
+    return cards
+
+
+def _self_fix(cards: dict, topic: str, model: str | None, rounds: int = 2,
+              facts: str | None = None) -> dict:
     """규칙 위반(글자수/빈칸/클리셰/중복) 슬라이드만 재생성으로 교정. 정확·빠른 게이트."""
     for _ in range(rounds):
         rep = quality.check_cards(cards)
@@ -171,7 +235,7 @@ def _self_fix(cards: dict, topic: str, model: str | None, rounds: int = 2) -> di
         for idx in bad:
             role = slides[idx].get("role", "point")
             try:
-                fresh = regen_slide(topic, role, used, model=model)
+                fresh = regen_slide(topic, role, used, model=model, facts=facts)
             except Exception:
                 continue
             slides[idx]["headline"] = fresh.get("headline", slides[idx].get("headline"))
@@ -205,13 +269,15 @@ _NO_NUMBERS = (
 
 
 def regen_slide(topic: str, role: str, used_headlines: list[str],
-                model: str | None = None, no_numbers: bool = False) -> dict:
+                model: str | None = None, no_numbers: bool = False,
+                facts: str | None = None) -> dict:
     """카드 1장의 카피만 새로 뽑는다(편집기 '다시 생성')."""
     hsize = "12자 내외" if role == "cover" else "6~10자 소제목"
     prompt = REGEN_TMPL.format(
         topic=topic, role_desc=_ROLE_DESC.get(role, _ROLE_DESC["point"]),
         used=", ".join(h for h in used_headlines if h) or "(없음)", hsize=hsize,
     )
+    prompt += _facts_block(facts)
     if no_numbers:
         prompt += _NO_NUMBERS
     data = generate_json(prompt, model=model, temperature=0.9)

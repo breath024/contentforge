@@ -54,6 +54,11 @@
   .tnpick:hover{border-color:#475569;}
   .tnpick.on{border-color:#7c3aed;background:#7c3aed22;}
   .tnpick span{display:block;font-size:10.5px;color:#64748b;font-weight:500;margin-top:2px;}
+  #facts{width:100%;background:#0b1020;border:1px solid #283549;border-radius:12px;
+    color:#e8eefc;padding:13px 15px;font-size:14px;line-height:1.6;resize:vertical;
+    font-family:inherit;margin-top:2px;}
+  #facts:focus{outline:none;border-color:#38bdf8;}
+  #facts::placeholder{color:#475569;}
   .themepick{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:8px;}
   .tpick{text-align:left;padding:13px 15px;border-radius:12px;border:1px solid #283549;
     background:#0b1020;color:#e7ecf5;cursor:pointer;display:flex;flex-direction:column;gap:3px;
@@ -169,6 +174,12 @@
       <div class="tonepick" id="tonepick"></div>
       <label style="margin-top:16px;">디자인 테마</label>
       <div class="themepick" id="themepick"></div>
+      <label style="margin-top:16px;">제품·서비스 사실 <span style="color:#64748b;font-weight:500;">(선택 — 적으면 이 안에서만 쓴다)</span></label>
+      <textarea id="facts" rows="4" placeholder="모델은 내 제품을 모른다. 아는 대로 적어두면 지어내지 않는다.
+예)
+· 이름은 인포스.
+· 사업자등록번호만 넣으면 받을 수 있는 정부 지원사업을 공공데이터에서 찾아준다.
+· 지금은 베타테스터 모집 단계. 신청하면 출시 전에 먼저 써볼 수 있다."></textarea>
       <div class="examples">
         <span class="chip">90%가 모르는 카드뉴스 만드는 법</span>
         <span class="chip">월 100만원 부수입 만드는 5가지</span>
@@ -208,6 +219,10 @@
         <input id="pfTarget" placeholder="타겟 (예: 첫 직장 2030)">
         <input id="pfTone" placeholder="말투/톤 (예: 친근하고 쉽게, 잔소리 없이)">
         <input id="pfBrand" placeholder="@브랜드핸들">
+        <textarea id="pfFacts" rows="3" placeholder="이 채널이 파는 것의 사실 (선택) — 배치 생성 전체가 이걸 본다"
+          style="grid-column:1/-1;background:#0b1020;border:1px solid #283549;border-radius:12px;
+                 color:#e8eefc;padding:11px 13px;font-size:13.5px;line-height:1.55;
+                 resize:vertical;font-family:inherit;"></textarea>
         <select id="pfTheme"></select>
         <select id="pfTonePreset"></select>
         <button class="btn pri" id="pfSave">페르소나 저장</button>
@@ -299,6 +314,7 @@ async function generate(){
     const r = await fetch('/api/generate', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({topic, n:+$('#n').value, brand:$('#brand').value,
         use_research: $('#research').checked, theme, tone_preset: tonePreset,
+        facts: $('#facts').value.trim(),
         verify_claims: $('#vclaims').checked})});
     const j = await r.json();
     if(j.error){ msg.textContent = '⚠️ ' + j.error; gen.disabled = false; return; }
@@ -377,12 +393,13 @@ $('#pNew').onclick = () => $('#pForm').classList.toggle('on');
 $('#pfSave').onclick = async () => {
   const body = {name:$('#pfName').value, niche:$('#pfNiche').value, target:$('#pfTarget').value,
     tone:$('#pfTone').value, brand:$('#pfBrand').value, theme:$('#pfTheme').value,
+    facts:$('#pfFacts').value.trim(),
     tone_preset:$('#pfTonePreset').value};
   if(!body.name && !body.niche){ alert('이름과 니치는 필요해요'); return; }
   const j = await (await fetch('/api/persona_create',{method:'POST',
     headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
   if(j.error){ alert(j.error); return; }
-  ['pfName','pfNiche','pfTarget','pfTone','pfBrand'].forEach(id=>$('#'+id).value='');
+  ['pfName','pfNiche','pfTarget','pfTone','pfBrand','pfFacts'].forEach(id=>$('#'+id).value='');
   await loadPersonas();
   $('#personaSel').value = j.persona.id; selectPersona(j.persona.id);
 };
