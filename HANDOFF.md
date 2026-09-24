@@ -30,7 +30,7 @@
 **바탕화면 `ContentForge` 바로가기** → 런처 창(`launcher.pyw`)에서 켜기/끄기. 켜지면 브라우저 자동으로 열림.
 창 닫으면 거기서 켠 서버도 꺼짐. `.pyw` 연결이 없는 PC라 바로가기가 `pythonw.exe`를 직접 가리킨다.
 ```powershell
-cd C:\Users\USER\Desktop\ContentForge
+cd C:\Users\USER\Desktop\개인프젝\ContentForge
 $env:PYTHONUTF8=1; python app.py    # → http://127.0.0.1:8770
 # CLI만:  python run.py "직장인 점심시간 10분 스트레칭"
 ```
