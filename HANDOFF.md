@@ -33,6 +33,8 @@
 cd C:\Users\USER\Desktop\개인프젝\ContentForge
 $env:PYTHONUTF8=1; python app.py    # → http://127.0.0.1:8770
 # CLI만:  python run.py "직장인 점심시간 10분 스트레칭"
+# 카피를 직접 쓴 원고: python render.py 원고.json [--out out/폴더] [--theme cinema] [--brand @계정]
+#   (image_credit.url 있는 슬라이드는 그 사진, 없으면 image_query 자동. 정리까지 알아서 한다)
 ```
 ※ Ollama 떠 있어야 함(`ollama serve`). 모델 자동선택 `llm.PREFERRED` 순(qwen3-abliterated > qwen2.5:14b > gemma3).
 ※ Chrome 필수(헤드리스로 카드 PNG 굽기). Edge 폴백.
@@ -44,7 +46,7 @@ $env:PYTHONUTF8=1; python app.py    # → http://127.0.0.1:8770
 | `app.py` | 로컬 서버(ThreadingHTTPServer). `/api/generate`(백그라운드 워커)·`/api/job`·`/api/projects`·`/api/project`·`/out/*` 정적 |
 | `generate.py` | 주제 → 슬라이드 JSON. **후킹 프롬프트**(숫자/손해회피/반전 강제) + 슬라이드별 `image_query`(영문 검색어) |
 | `images.py` | 배경사진 조달. 자동(`fetch_one`) + **후보 고르기**(`search_candidates_ex`: Openverse cc0·pdm, 익명 page_size≤20, 검색어 좁혀 재시도) + `fetch_chosen` + `save_uploaded`(내 사진→JPEG) |
-| `render.py` | 슬라이드 → 1080×1350 카드 HTML → Chrome 헤드리스 PNG. cover/cta=풀배경+오버레이, point=상단 이미지밴드+밝은 패널 |
+| `render.py` | 슬라이드 → 1080×1350 카드 HTML → Chrome 헤드리스 PNG. cover/cta=풀배경+오버레이, point=상단 이미지밴드+밝은 패널. **굽고 나서 정리까지**: png/·html/ 나누기, `사진_출처.txt`, `묶음.png`(한 편 한눈에). 원고 CLI 겸함 |
 | `verify.py` | **근거 대조 게이트**(2026-09-03). 슬라이드의 %·금액·날짜를 뽑아 Bing 검색 결과 원문과 대조 → 어디에도 없으면 그 장을 숫자 없이 재생성. 검색엔진 함정은 이 파일 docstring 이 원본 |
 | `launcher.pyw` | 서버 켜기/끄기 창(tkinter). 끄기는 8770 포트 주인을 자식(Chrome)까지 taskkill → 터미널에서 켠 서버도 끔 |
 | `cancel.py` | 생성 중지 신호. 워커가 Event 를 bind, LLM 스트림 조각·근거 검색·카드 1장마다 check(). `Cancelled`는 BaseException(재생성 `except Exception` 에 삼켜지지 않게) |
@@ -52,7 +54,7 @@ $env:PYTHONUTF8=1; python app.py    # → http://127.0.0.1:8770
 | `reader.html` | 리더기·편집기. `?slug=` 캐러셀, 카피수정·재생성, **🖼️ 사진 고르기 창**(`/api/photo_candidates`·`/api/pick_photo`·`/api/upload_photo`) |
 | `themes.py` | 테마 CSS 변수 세트. `photo`(사진 쓰나)·`full_bleed`(cinema: 사진 전체+아래 그라데이션+흰 글씨) |
 | `generate.py` 사실 | `facts` 가 있으면 `_facts_block` 을 프롬프트에 넣고, `_facts_fix` 가 사실에 없는 숫자 쓴 장을 재생성. slides.json 에 `facts` 저장 |
-| `out/<slug>/` | 산출물: card_NN.png, card_NN.html, img/, slides.json |
+| `out/<slug>/` | 산출물: `png/`(보낼 카드만), `html/`, `img/`, `slides.json`, `사진_출처.txt`, `묶음.png`. 2026-09-27 전 작업물은 PNG가 폴더 바로 아래 — 목록은 그대로 읽고, 다시 구우면 새 구조로 옮긴다 |
 
 ## ⚠️ 하드런 함정 (이미 잡은 것)
 - **Chrome `--screenshot`은 절대경로만** 받음(상대경로=조용히 실패). `png_path.resolve()`.

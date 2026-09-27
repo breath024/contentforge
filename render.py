@@ -12,7 +12,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from images import fetch_images
+from images import fetch_one, fetch_chosen
 import themes
 
 W, H = 1080, 1350
@@ -194,9 +194,63 @@ def render_card(slide: dict, i: int, total: int, out_dir: str | Path,
     return png_path if _shoot(chrome, html_path, png_path) else None
 
 
+def write_credits(out_dir: str | Path, cards: dict) -> None:
+    """고른 사진의 출처를 폴더에 남긴다. CC0/PDM 은 표기 의무가 없지만,
+    남에게 넘길 때 '어디서 왔는지'를 못 대면 쓰기 곤란해진다(2026-09-11)."""
+    rows = []
+    for i, s in enumerate(cards.get("slides", []), 1):
+        c = s.get("image_credit")
+        if not c:
+            continue
+        rows.append(f"card_{i:02d}: {c.get('title','')} / {c.get('creator','')} / "
+                    f"{c.get('license','')} / {c.get('landing','')}")
+    if not rows:
+        return
+    (Path(out_dir) / "사진_출처.txt").write_text(
+        "배경 사진 출처 — Openverse(api.openverse.org) 에서 CC0/PDM 만 골랐다." + chr(10)
+        + "퍼블릭 도메인이라 출처 표기 의무는 없고 상업적 사용도 된다." + chr(10) * 2
+        + chr(10).join(rows) + chr(10), encoding="utf-8")
+
+
+SHEET_NAME = "묶음.png"
+
+
+def make_sheet(out_dir: str | Path, cols: int = 4) -> Path | None:
+    """카드 전체를 한 장에 모은 확인용 이미지(묶음.png). png/ 밖에 둬서 보낼 카드에 안 섞인다.
+    호윤이 한 편을 한눈에 보려고 매번 따로 만들어 달라던 것(2026-09-27)."""
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+    out = Path(out_dir)
+    cards = sorted((out / "png").glob("card_*.png"))
+    if not cards:
+        return None
+    tw, th, g = 540, 675, 16
+    rows = (len(cards) + cols - 1) // cols
+    sheet = Image.new("RGB", (cols * tw + (cols + 1) * g, rows * th + (rows + 1) * g), "white")
+    for k, c in enumerate(cards):
+        im = Image.open(c).convert("RGB").resize((tw, th), Image.LANCZOS)
+        sheet.paste(im, (g + (k % cols) * (tw + g), g + (k // cols) * (th + g)))
+    dest = out / SHEET_NAME
+    sheet.save(dest)
+    return dest
+
+
+def _slide_image(slide: dict, i: int, out: Path) -> Path | None:
+    """고른 사진(image_credit)이 있으면 그걸 — 이미 받아 둔 파일 우선, 없으면 url 로 받는다.
+    고른 게 없을 때만 image_query 로 자동 조달(다시 구워도 고른 사진이 안 바뀌게)."""
+    cred = slide.get("image_credit")
+    if cred:
+        return img_path_for(out, i) or (fetch_chosen(cred["url"], out, i) if cred.get("url") else None)
+    return fetch_one(slide.get("image_query") or "", out, i, variant=i)
+
+
 def render(cards: dict, out_dir: str | Path, brand: str = "@contentforge",
            with_images: bool = True, on_progress=None,
            theme: str | None = None) -> list[Path]:
+    """카드 전체를 굽고 폴더를 정리까지 한다 — png/·html/ 나누기, 사진_출처.txt, 묶음.png.
+    사람이(또는 클로드가) 뒤에서 손으로 정리하지 않아도 되게(2026-09-27)."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     theme = theme or cards.get("theme") or themes.DEFAULT
@@ -206,8 +260,13 @@ def render(cards: dict, out_dir: str | Path, brand: str = "@contentforge",
     if on_progress:
         on_progress("images", 0, total)
     # 무사진 테마는 이미지 안 받음 → 다운로드/용량 0
-    imgs: dict[int, Path] = ({} if not themes.uses_photo(theme)
-                             else fetch_images(slides, out) if with_images else {})
+    imgs: dict[int, Path] = {}
+    if themes.uses_photo(theme) and with_images:
+        for i, s in enumerate(slides, 1):
+            p = _slide_image(s, i, out)
+            if p:
+                imgs[i] = p
+        print(f"  [이미지] {len(imgs)}/{total}장")
     chrome = find_chrome()
     pngs: list[Path] = []
     for i, slide in enumerate(slides, 1):
@@ -222,13 +281,35 @@ def render(cards: dict, out_dir: str | Path, brand: str = "@contentforge",
     (out / "slides.json").write_text(
         json.dumps(cards, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    if themes.uses_photo(theme):
+        write_credits(out, cards)
+    make_sheet(out)
     return pngs
 
 
 if __name__ == "__main__":
+    # 카피를 직접 쓴 slides.json 을 ContentForge 로 굽는다(LLM 기획 없이).
+    #   python render.py 원고.json [--out out/폴더] [--theme cinema] [--brand @계정]
+    # 슬라이드에 image_credit.url 이 있으면 그 사진을, 없으면 image_query 로 자동 조달한다.
+    import argparse
     import sys
-    src = sys.argv[1] if len(sys.argv) > 1 else "out/slides.json"
-    th = sys.argv[2] if len(sys.argv) > 2 else None
-    data = json.loads(Path(src).read_text(encoding="utf-8"))
-    pngs = render(data, "out", theme=th)
-    print(f"\n{len(pngs)}장 생성 완료 → out/")
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+    ap = argparse.ArgumentParser()
+    ap.add_argument("src", help="slides.json (topic·slides, 선택: brand·theme)")
+    ap.add_argument("--out", default=None, help="출력 폴더 (기본 out/<topic>)")
+    ap.add_argument("--theme", default=None)
+    ap.add_argument("--brand", default=None)
+    a = ap.parse_args()
+    data = json.loads(Path(a.src).read_text(encoding="utf-8"))
+    topic = data.get("topic", "untitled")
+    slug = "".join(c if c.isalnum() else "_" for c in topic).strip("_")[:40] or "untitled"
+    out_dir = Path(a.out or Path(__file__).parent / "out" / slug)
+    brand = a.brand or data.get("brand") or "@contentforge"
+    data["brand"] = brand
+    pngs = render(data, out_dir, brand=brand, theme=a.theme)
+    print(f"\n{len(pngs)}장 → {(out_dir / 'png').resolve()}")
+    print(f"묶음 → {(out_dir / SHEET_NAME).resolve()}")

@@ -34,7 +34,7 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 from generate import make_cards, regen_slide
-from render import render, render_card, img_path_for, png_dir
+from render import render, render_card, img_path_for, png_dir, write_credits, make_sheet
 from images import fetch_one, search_candidates_ex, fetch_chosen, save_uploaded
 from llm import pick_model
 import cancel
@@ -184,24 +184,6 @@ def _load_cards(slug: str):
     return d, json.loads(sj.read_text(encoding="utf-8"))
 
 
-def _write_credits(d: Path, cards: dict):
-    """고른 사진의 출처를 폴더에 남긴다. CC0/PDM 은 표기 의무가 없지만,
-    남에게 넘길 때 '어디서 왔는지'를 못 대면 쓰기 곤란해진다(2026-09-11)."""
-    rows = []
-    for i, s in enumerate(cards.get("slides", []), 1):
-        c = s.get("image_credit")
-        if not c:
-            continue
-        rows.append(f"card_{i:02d}: {c.get('title','')} / {c.get('creator','')} / "
-                    f"{c.get('license','')} / {c.get('landing','')}")
-    if not rows:
-        return
-    (d / "사진_출처.txt").write_text(
-        "배경 사진 출처 — Openverse(api.openverse.org) 에서 CC0/PDM 만 골랐다." + chr(10)
-        + "퍼블릭 도메인이라 출처 표기 의무는 없고 상업적 사용도 된다." + chr(10) * 2
-        + chr(10).join(rows) + chr(10), encoding="utf-8")
-
-
 def _rerender_one(d: Path, cards: dict, index: int, img: Path | None):
     """slides.json 저장 + 카드 1장 재렌더. 캐시 회피용 ?t 쿼리 포함 url 반환."""
     slides = cards["slides"]
@@ -211,6 +193,7 @@ def _rerender_one(d: Path, cards: dict, index: int, img: Path | None):
     )
     png = render_card(slides[index - 1], index, len(slides), d, brand, img,
                       theme=cards.get("theme"))
+    make_sheet(d)
     bust = int(d.stat().st_mtime * 1000) + index
     return f"/out/{d.name}/png/card_{index:02d}.png?t={bust}", png
 
@@ -478,7 +461,7 @@ class Handler(SimpleHTTPRequestHandler):
                     img = fetch_one(slide.get("image_query", cards.get("topic", "")),
                                     d, idx, variant=variant) or img_path_for(d, idx)
                 url, png = _rerender_one(d, cards, idx, img)
-                _write_credits(d, cards)
+                write_credits(d, cards)
                 if not png:
                     return self._json({"error": "렌더 실패"}, 500)
                 return self._json({"ok": True, "index": idx, "url": url, "slide": slide})
