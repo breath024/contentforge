@@ -166,13 +166,30 @@ def img_path_for(out_dir: str | Path, i: int) -> Path | None:
     return p if p.exists() else None
 
 
+def png_dir(out_dir: str | Path) -> Path:
+    """카드 PNG 가 있는 폴더. 예전 작업물(폴더 바로 아래에 PNG)도 읽을 수 있게 되돌아간다."""
+    p = Path(out_dir) / "png"
+    return p if p.is_dir() else Path(out_dir)
+
+
+def ensure_layout(out_dir: str | Path) -> None:
+    """카드 PNG 는 png/, 카드 HTML 은 html/ 에 둔다 — 보낼 때 PNG 폴더만 집으면 되게.
+    폴더 바로 아래에 섞여 있던 예전 작업물은 여기서 옮긴다(2026-09-27)."""
+    out = Path(out_dir)
+    for sub, pat in (("png", "card_*.png"), ("html", "card_*.html")):
+        (out / sub).mkdir(parents=True, exist_ok=True)
+        for f in out.glob(pat):
+            f.replace(out / sub / f.name)
+
+
 def render_card(slide: dict, i: int, total: int, out_dir: str | Path,
                 brand: str = "@contentforge", img: Path | None = None,
                 chrome: str | None = None, theme: str = themes.DEFAULT) -> Path | None:
     out = Path(out_dir)
+    ensure_layout(out)
     chrome = chrome or find_chrome()
-    html_path = out / f"card_{i:02d}.html"
-    png_path = out / f"card_{i:02d}.png"
+    html_path = out / "html" / f"card_{i:02d}.html"
+    png_path = out / "png" / f"card_{i:02d}.png"
     html_path.write_text(_card_html(slide, i, total, brand, img, theme), encoding="utf-8")
     return png_path if _shoot(chrome, html_path, png_path) else None
 

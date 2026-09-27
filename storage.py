@@ -33,7 +33,8 @@ def size_mb(path) -> float:
 
 
 def cleanup_artifacts(slug_dir) -> None:
-    """카드 HTML(디버그용 중간물)은 삭제 — 편집 시 render_card가 재생성한다."""
+    """폴더 바로 아래에 남은 카드 HTML 만 지운다. html/ 안의 것은 남긴다(2026-09-27 호윤:
+    PNG·HTML 을 폴더로 나눠 담을 것)."""
     for h in Path(slug_dir).glob("card_*.html"):
         try:
             h.unlink()

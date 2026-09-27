@@ -34,7 +34,7 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 from generate import make_cards, regen_slide
-from render import render, render_card, img_path_for
+from render import render, render_card, img_path_for, png_dir
 from images import fetch_one, search_candidates_ex, fetch_chosen, save_uploaded
 from llm import pick_model
 import cancel
@@ -104,7 +104,7 @@ def _worker(job_id: str, topic: str, n: int, brand: str, model: str | None,
             else:
                 job.update(message=f"카드 렌더 {i}/{total}", progress=i / total)
                 # 카드 1장 완성될 때마다 실시간으로 노출
-                job["cards"].append(f"/out/{slug}/card_{i:02d}.png?t={job_id}")
+                job["cards"].append(f"/out/{slug}/png/card_{i:02d}.png?t={job_id}")
 
         pngs = render(cards, out_dir, brand=brand, on_progress=on_progress, theme=theme)
         # 용량 관리: 중간 HTML 청소 + 총량 상한 적용(현재 작업물은 보호)
@@ -212,7 +212,7 @@ def _rerender_one(d: Path, cards: dict, index: int, img: Path | None):
     png = render_card(slides[index - 1], index, len(slides), d, brand, img,
                       theme=cards.get("theme"))
     bust = int(d.stat().st_mtime * 1000) + index
-    return f"/out/{d.name}/card_{index:02d}.png?t={bust}", png
+    return f"/out/{d.name}/png/card_{index:02d}.png?t={bust}", png
 
 
 def _project_info(slug_dir: Path) -> dict | None:
@@ -223,13 +223,13 @@ def _project_info(slug_dir: Path) -> dict | None:
         data = json.loads(sj.read_text(encoding="utf-8"))
     except Exception:
         return None
-    cards = sorted(slug_dir.glob("card_*.png"))
+    cards = sorted(png_dir(slug_dir).glob("card_*.png"))
     th = data.get("theme")
     return {
         "slug": slug_dir.name,
         "topic": data.get("topic", slug_dir.name),
         "count": len(cards),
-        "cover": f"/out/{slug_dir.name}/{cards[0].name}" if cards else None,
+        "cover": f"/out/{slug_dir.name}/{cards[0].relative_to(slug_dir).as_posix()}" if cards else None,
         "mtime": sj.stat().st_mtime,
         "theme": th,
         "uses_photo": themes.uses_photo(th),
@@ -326,9 +326,9 @@ class Handler(SimpleHTTPRequestHandler):
             if not info:
                 return self._json({"error": "not found"}, 404)
             data = json.loads((d / "slides.json").read_text(encoding="utf-8"))
-            cards = sorted(d.glob("card_*.png"))
+            cards = sorted(png_dir(d).glob("card_*.png"))
             info["slides"] = data.get("slides", [])
-            info["cards"] = [f"/out/{slug}/{c.name}" for c in cards]
+            info["cards"] = [f"/out/{slug}/{c.relative_to(d).as_posix()}" for c in cards]
             return self._json(info)
         return super().do_GET()
 
